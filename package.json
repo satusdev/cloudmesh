@@ -1,0 +1,25 @@
+{
+  "name": "cloudmesh",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "format": "prettier --write \"**/*.js\"",
+    "lint": "eslint .",
+    "prepare": "husky install",
+    "release": "release-please"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@commitlint/cli": "^17.0.0",
+    "@commitlint/config-conventional": "^17.0.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.5.1",
+    "husky": "^8.0.0",
+    "prettier": "^3.6.2",
+    "release-please": "^15.0.0"
+  }
+}
