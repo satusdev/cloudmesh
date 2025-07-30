@@ -6,7 +6,7 @@
 
 <div align="center">
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/satusdev/scaffold/lint.yml?branch=main)](https://github.com/satusdev/scaffold/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/satusdev/cloudmesh/lint.yml?branch=main)](https://github.com/satusdev/cloudmesh/actions)
 [![npm version](https://img.shields.io/npm/v/starter-template.svg)](https://www.npmjs.com/package/starter-template)
 [![License](https://img.shields.io/npm/l/starter-template.svg)](https://opensource.org/licenses/MIT)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white)](https://conventionalcommits.org)
@@ -51,6 +51,15 @@ CloudMesh is a Python tool that maps Cloudflare domains and subdomains to Hetzne
   - Hetzner: Generate a Read & Write token for each project (Hetzner Cloud Console).
 
 ### Setup
+
+#### Quick Install (Linux)
+
+```bash
+sudo apt-get update && sudo apt-get install -y wkhtmltopdf python3-venv && python3 -m venv venv && source venv/bin/activate && pip install requests pdfkit
+```
+
+- For macOS: Replace `sudo apt-get install -y wkhtmltopdf` with `brew install wkhtmltopdf`.
+- For Windows: Download and install [wkhtmltopdf](https://wkhtmltopdf.org/downloads.html) manually, then run the Python commands.
 
 1. **Clone the Repository:**
    ```bash
@@ -152,7 +161,7 @@ These enhancements can be prioritized based on your needs, making CloudHetznerSy
 
 ## Getting Help 🆘
 
-If you encounter any issues or have questions, please [open an issue](https://github.com/satusdev/scaffold/issues) on the GitHub repository.
+If you encounter any issues or have questions, please [open an issue](https://github.com/satusdev/cloudmesh/issues) on the GitHub repository.
 
 ## License
 
