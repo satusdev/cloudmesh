@@ -41,7 +41,7 @@ CloudMesh is a Python tool that maps Cloudflare domains and subdomains to Hetzne
 
 - **Python 3.6+:** Ensure Python is installed (`python3 --version`).
 - **Dependencies:**
-  - Python packages: `requests`, `pdfkit` (`pip install requests pdfkit`).
+  - Python packages: `requests`, `pdfkit`, `prometheus_client` (`pip install requests pdfkit prometheus_client`).
   - System tool: `wkhtmltopdf` for PDF generation.
     - Ubuntu/Debian: `sudo apt-get install wkhtmltopdf`
     - macOS: `brew install wkhtmltopdf`
@@ -52,45 +52,136 @@ CloudMesh is a Python tool that maps Cloudflare domains and subdomains to Hetzne
 
 ### Setup
 
-#### Quick Install (Linux)
+#### 1. Install Python Dependencies
+
+- Create and activate a virtual environment (recommended):
+  ```bash
+  python3 -m venv venv
+  source venv/bin/activate  # On Windows: venv\Scripts\activate
+  ```
+- Install required Python packages:
+  ```bash
+  pip install requests pdfkit prometheus_client
+  ```
+- Install wkhtmltopdf:
+  - Ubuntu/Debian: `sudo apt-get install wkhtmltopdf`
+  - macOS: `brew install wkhtmltopdf`
+  - Windows: Download from [wkhtmltopdf.org](https://wkhtmltopdf.org/downloads.html) and add to PATH
+
+#### 2. Install and Run Prometheus, Pushgateway, and Grafana
+
+**Option A: Docker (Recommended)**
+
+> **Note:** When running Prometheus and Pushgateway in Docker, `localhost` does not work between containers. Use a user-defined Docker network and container names for connectivity.
 
 ```bash
-sudo apt-get update && sudo apt-get install -y wkhtmltopdf python3-venv && python3 -m venv venv && source venv/bin/activate && pip install requests pdfkit
+# Create a Docker network for monitoring tools
+docker network create monitoring
+
+# Start Pushgateway on the network with a name
+docker run -d --name pushgateway --network monitoring -p 9091:9091 prom/pushgateway
+
+# Start Prometheus on the same network with a name and config volume
+docker run -d --name prometheus --network monitoring -p 9090:9090 -v $PWD/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+
+# Start Grafana on the same network with a name
+docker run -d --name grafana --network monitoring -p 3000:3000 grafana/grafana
 ```
 
-- For macOS: Replace `sudo apt-get install -y wkhtmltopdf` with `brew install wkhtmltopdf`.
-- For Windows: Download and install [wkhtmltopdf](https://wkhtmltopdf.org/downloads.html) manually, then run the Python commands.
+Update your `prometheus.yml` to use the Pushgateway container name:
 
-1. **Clone the Repository:**
-   ```bash
-   git clone https://github.com/yourusername/CloudHetznerSync.git
-   cd CloudHetznerSync
-   ```
-2. **Set Up a Virtual Environment (recommended):**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-3. **Install Python Dependencies:**
-   ```bash
-   pip install requests pdfkit
-   ```
-4. **Install wkhtmltopdf:**  
-   Follow the instructions above for your operating system.
-5. **Configure API Tokens:**  
-   Create a `config.json` file in the project root with your API tokens:
-   ```json
-   {
-     "cloudflare": {
-       "api_token": "your_cloudflare_api_token"
-     },
-     "hetzner": [
-       {"project_name": "Project1", "api_token": "hetzner_token_for_project1"},
-       {"project_name": "Project2", "api_token": "hetzner_token_for_project2"}
-     ]
-   }
-   ```
-   **Important:** Do not commit `config.json` to version control. It’s already excluded in `.gitignore`.
+```yaml
+scrape_configs:
+  - job_name: 'cloudmesh_pushgateway'
+    static_configs:
+      - targets: ['pushgateway:9091']
+```
+
+**Option B: Manual Installation**
+- [Prometheus Download](https://prometheus.io/download/)
+- [Pushgateway Download](https://prometheus.io/docs/prometheus/latest/getting_started/#pushgateway)
+- [Grafana Download](https://grafana.com/grafana/download)
+
+#### 3. Configure CloudMesh
+
+- Set the following environment variables (in your shell, .env file, or CI/CD secrets):
+
+  - `CLOUDFLARE_TOKEN`: Cloudflare API token with `Zone:Read` and `DNS:Read` permissions.
+  - `HETZNER_TOKEN_1`, `HETZNER_PROJECT_NAME_1`: Hetzner API token and project name for each project (add more as needed: `HETZNER_TOKEN_2`, etc.).
+  - `PUSHGATEWAY_URL`: URL of your Prometheus Pushgateway (e.g., `http://pushgateway:9091` or `http://localhost:9091`).
+
+  Example `.env` file:
+  ```
+  CLOUDFLARE_TOKEN=your_cloudflare_token
+  HETZNER_TOKEN_1=your_hetzner_token
+  HETZNER_PROJECT_NAME_1=your_project_name
+  PUSHGATEWAY_URL=http://pushgateway:9091
+  ```
+
+  If running in CI/CD, set these as repository secrets.
+
+---
+
+### Docker Networking Troubleshooting
+
+- If Prometheus cannot connect to Pushgateway, ensure both containers are on the same Docker network and use the container name (not `localhost`) in `prometheus.yml`.
+- Restart Prometheus after any configuration changes.
+- To check connectivity, you can run a shell in the Prometheus container and ping the Pushgateway:
+  ```bash
+  docker exec -it prometheus sh
+  ping pushgateway
+  ```
+- If you run your script outside Docker, use `localhost:9091` for Pushgateway in `config.json`. If inside Docker, use `pushgateway:9091`.
+
+### Monitoring and Dashboard Access
+
+#### A. Accessing Prometheus
+
+- Once Prometheus is running, open [http://localhost:9090](http://localhost:9090) in your browser.
+- Use the "Status" → "Targets" menu to verify that the Pushgateway is listed and metrics are being scraped.
+- You can query metrics directly from the Prometheus web UI.
+
+#### B. Accessing Grafana
+
+- Once Grafana is running, open [http://localhost:3000](http://localhost:3000) in your browser.
+- **Default login:**  
+  - Username: `admin`  
+  - Password: `admin` (you will be prompted to change this on first login)
+- After login:
+  1. Go to "Configuration" → "Data Sources" → "Add data source".
+  2. Select "Prometheus" and set the URL to `http://prometheus:9090`.
+  3. Save & Test the data source.
+  4. Go to "Dashboards" → "Import" and upload `grafana-dashboard.json` from the repo.
+  5. Open the imported dashboard to view CloudMesh metrics.
+
+- **Security Note:** Change the Grafana admin password after your first login.
+
+#### C. Running the Script and Workflow
+
+- Ensure the required environment variables are set as described above.
+- Run the script:
+  ```bash
+  python script.py
+  ```
+- The script will:
+  - Generate HTML and PDF reports in the `reports/` directory.
+  - Push monitoring metrics (run count, duration, domains, records, errors, etc.) to the Prometheus Pushgateway.
+
+#### D. How It All Works Together
+
+1. `script.py` runs and pushes metrics to the Pushgateway.
+2. Prometheus scrapes the Pushgateway and stores metrics.
+3. Grafana visualizes these metrics using the provided dashboard.
+
+#### E. Example Workflow
+
+1. Start Prometheus, Pushgateway, and Grafana (see above).
+2. Run `python script.py` to generate reports and metrics.
+3. Open Prometheus ([http://localhost:9090](http://localhost:9090)) to verify metrics.
+4. Open Grafana ([http://localhost:3000](http://localhost:3000)), add Prometheus as a data source, and import the dashboard.
+5. View real-time metrics and visualizations in Grafana.
+
+
 
 ### Usage
 
@@ -145,9 +236,94 @@ Contributions are welcome! If you have an improvement or a new feature, please f
 
 Made with [contrib.rocks](https://contrib.rocks).
 
-## Future Enhancements 🔮
+## Monitoring with Prometheus & Grafana
 
-We have a few ideas for future enhancements. Feel free to contribute or suggest new ones!
+CloudMesh supports real-time monitoring via Prometheus and Grafana.
+
+### Usage: Accessing Prometheus & Grafana
+
+#### Prometheus
+
+1. Start Prometheus and your script as described in the setup.
+2. Open [http://localhost:9090](http://localhost:9090) in your browser.
+3. In the top menu, click **Status** → **Targets**.
+   - Confirm that the Pushgateway is listed as a target and its state is **UP**.
+4. To check for metrics:
+   - Click **Graph** or **Explore**.
+   - Enter a metric name such as `cloudmesh_script_runs_total` and click **Execute**.
+   - If you see data, Prometheus is receiving metrics from your script.
+5. **Troubleshooting:**  
+   - If you see no targets or metrics, ensure Prometheus is running with the correct `prometheus.yml` and that your script has pushed metrics to the Pushgateway.
+
+#### Grafana
+
+1. Start Grafana as described in the setup.
+2. Open [http://localhost:3000](http://localhost:3000) in your browser.
+3. Log in with the default credentials:
+   - Username: `admin`
+   - Password: `admin` (you will be prompted to change this on first login)
+4. In the left sidebar, click the **gear icon (Configuration)** → **Data Sources** → **Add data source**.
+5. Select **Prometheus**.
+6. In the **HTTP** section, set the URL to `http://localhost:9090`.
+7. Click **Save & Test**. You should see "Data source is working".
+8. In the left sidebar, click the **four squares icon (Dashboards)** → **Import**.
+9. Click **Upload JSON file** and select `grafana-dashboard.json` from your project directory.
+10. Assign the imported dashboard to the Prometheus data source you just created.
+11. Click **Import**. The dashboard should now display CloudMesh metrics.
+12. **Troubleshooting:**  
+    - If the dashboard is empty, ensure your script has run and metrics are present in Prometheus.
+    - Double-check that the correct data source is selected for the dashboard panels.
+
+**Security Note:**  
+Change the Grafana admin password after your first login for security.
+
+### How it works
+
+- Each run of `script.py` pushes metrics (run count, duration, domains, records, errors, etc.) to a Prometheus Pushgateway.
+- Prometheus scrapes the Pushgateway and stores metrics.
+- Grafana visualizes these metrics using the provided dashboard.
+
+### Setup
+
+1. **Install Prometheus, Pushgateway, and Grafana** (Docker example):
+
+   ```bash
+   docker run -d -p 9090:9090 -v $PWD/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+   docker run -d -p 9091:9091 prom/pushgateway
+   docker run -d -p 3000:3000 grafana/grafana
+   ```
+
+2. **Configure Pushgateway URL**
+
+   Set the `PUSHGATEWAY_URL` environment variable:
+
+   ```
+   PUSHGATEWAY_URL=http://localhost:9091
+   ```
+
+3. **Run the script**
+
+   ```bash
+   python script.py
+   ```
+
+   Metrics will be pushed to the Pushgateway after each run.
+
+4. **Import the Grafana Dashboard**
+
+   - Open Grafana at [http://localhost:3000](http://localhost:3000)
+   - Add Prometheus as a data source (URL: `http://localhost:9090`)
+   - Import `grafana-dashboard.json` from the repo
+
+### Metrics Collected
+
+- Script runs, errors, run duration
+- Domains, A records, matched servers, unmatched IPs
+
+### Example Prometheus config
+
+See `prometheus.yml` in the repo.
+
 
 - **Prometheus and Grafana Integration:** Add real-time monitoring with Prometheus to collect server metrics (e.g., CPU, memory, actual traffic) and visualize them in Grafana dashboards for a dynamic, at-a-glance view.
 - **Accurate Traffic Data:** Integrate Hetzner’s Robot Webservice or server logs to fetch real-time network traffic, replacing the current placeholder.
