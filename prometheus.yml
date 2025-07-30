@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'cloudmesh_pushgateway'
+    static_configs:
+      - targets: ['pushgateway:9091']
