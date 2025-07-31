@@ -387,32 +387,21 @@ def main():
             print(f"Error generating PDF: {e}")
             print("HTML report still available at reports/mapping.html")
 
-        # Send HTML report to Slack if webhook is set
+        # Send PDF report to Slack if webhook is set
         slack_webhook = os.environ.get("SLACK_WEBHOOK_URL")
         if slack_webhook:
             try:
-                with open(html_file, "r") as f:
-                    html_content = f.read()
                 import requests
+                with open(pdf_file, "rb") as f:
+                    pdf_bytes = f.read()
                 response = requests.post(
                     slack_webhook,
-                    json={
-                        "text": "CloudMesh Weekly Report",
-                        "blocks": [
-                            {
-                                "type": "section",
-                                "text": {
-                                    "type": "mrkdwn",
-                                    "text": "CloudMesh Weekly Report attached as HTML file."
-                                }
-                            }
-                        ]
-                    },
-                    files={"file": ("mapping.html", html_content, "text/html")}
+                    files={"file": ("mapping.pdf", pdf_bytes, "application/pdf")},
+                    data={"initial_comment": "CloudMesh Weekly Report (PDF)", "channels": "#general"}
                 )
-                print("Report sent to Slack, status:", response.status_code)
+                print("PDF report sent to Slack, status:", response.status_code)
             except Exception as e:
-                print("Failed to send report to Slack:", e)
+                print("Failed to send PDF report to Slack:", e)
 
         # Set Prometheus metrics
         run_counter.inc()
