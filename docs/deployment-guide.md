@@ -1,130 +1,167 @@
-# CloudMesh Deployment & Usage Guide
+# CloudMesh Deployment Guide: Hetzner Server & Domain Integration
 
-## 1. Prerequisites
+This guide explains how to deploy CloudMesh on a Hetzner Cloud server, link it with your domain (using Cloudflare), and follow best practices for a secure, reliable setup.
 
-- **Python 3.6+**
-- **Docker** (recommended for Prometheus, Pushgateway, Grafana)
-- **wkhtmltopdf** (for PDF report generation)
-- **Git**
+---
 
-## 2. Server Preparation
+## 1. Provision a Hetzner Cloud Server
 
-Install required tools:
+1. **Create a Hetzner Cloud Project** (if you don't have one).
+2. **Create a new server:**
+   - Go to the [Hetzner Cloud Console](https://console.hetzner.cloud/).
+   - Click "Add Server".
+   - Choose a location (e.g., Falkenstein, Nuremberg, Helsinki).
+   - Select an image: **Ubuntu 22.04 LTS** (recommended).
+   - Choose a server type (e.g., CX11 for testing, CPX21+ for production).
+   - Add SSH keys for secure access.
+   - Click "Create & Buy Now".
 
+3. **Note the server's public IPv4 address** (shown in the console).
+
+---
+
+## 2. Initial Server Setup
+
+SSH into your server:
 ```bash
-sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip wkhtmltopdf git
-# Install Docker if not present
-curl -fsSL https://get.docker.com | sh
+ssh root@<your-server-ip>
 ```
 
-## 3. Clone the Repository
+Update and install dependencies:
+```bash
+apt update && apt upgrade -y
+apt install -y python3 python3-pip python3-venv git wkhtmltopdf
+```
+
+---
+
+## 3. Clone CloudMesh and Set Up
 
 ```bash
 git clone https://github.com/satusdev/cloudmesh.git
 cd cloudmesh
-```
-
-## 4. Install Python Dependencies
-
-```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install requests pdfkit prometheus_client
+pip install -r requirements.txt || pip install requests pdfkit prometheus_client python-dotenv
 ```
 
-## 5. Set Environment Variables
+---
 
-Create a `.env` file or export variables in your shell:
+## 4. Configure Environment Variables
 
+Copy `.env.example` to `.env` and fill in your secrets:
+```bash
+cp .env.example .env
+nano .env
 ```
-CLOUDFLARE_TOKEN=your_cloudflare_token
-HETZNER_TOKEN_1=your_hetzner_token
-HETZNER_PROJECT_NAME_1=your_project_name
-PUSHGATEWAY_URL=http://pushgateway:9091
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/url
-```
+Set:
+- `CLOUDFLARE_TOKEN` (Cloudflare API token)
+- `HETZNER_TOKEN_1` and `HETZNER_PROJECT_NAME_1` (Hetzner API token/project)
+- `PUSHGATEWAY_URL` (e.g., http://localhost:9091 or your monitoring server)
+- `SLACK_BOT_TOKEN` and `SLACK_CHANNEL_ID` (if using Slack integration)
 
-- `SLACK_WEBHOOK_URL` is optional but required to send the weekly report to a Slack channel.
-- Add more Hetzner projects as needed (`HETZNER_TOKEN_2`, etc.).
+---
 
-## 6. Start Monitoring Stack (Docker)
+## 5. Running CloudMesh
 
 ```bash
-docker network create monitoring
-
-docker run -d --name pushgateway --network monitoring -p 9091:9091 prom/pushgateway
-docker run -d --name prometheus --network monitoring -p 9090:9090 -v $PWD/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
-docker run -d --name grafana --network monitoring -p 3000:3000 grafana/grafana
-```
-
-## 7. Run the Script
-
-```bash
-source venv/bin/activate
 python script.py
 ```
+- Reports are generated in `reports/`
+- Metrics are pushed to Prometheus Pushgateway
 
-- Generates HTML and PDF reports in `reports/`
-- Pushes metrics to Pushgateway
+**Optional:** Set up as a systemd service for auto-start (see below).
 
-## 8. Schedule Script (Optional)
+---
 
-### Using cron
+## 6. Link Your Domain (Cloudflare DNS)
 
+1. **Add your domain to Cloudflare** if not already done.
+2. **Create an A record** in Cloudflare DNS:
+   - Name: `@` (for root) or `app` (for app.yourdomain.com)
+   - IPv4 address: your Hetzner server's public IP
+   - Proxy status: DNS only (or Proxied if you want Cloudflare protection)
+3. **Wait for DNS propagation** (usually a few minutes).
+
+---
+
+## 7. (Optional) Secure with HTTPS
+
+If you want to serve web content (e.g., a dashboard or API), use Let's Encrypt:
 ```bash
-crontab -e
-# Add (runs every Sunday at 2:00 AM):
-0 2 * * 0 cd /path/to/cloudmesh && /bin/bash -c 'source venv/bin/activate && python script.py'
+apt install -y snapd
+snap install core; snap refresh core
+snap install --classic certbot
+ln -s /snap/bin/certbot /usr/bin/certbot
+certbot certonly --standalone -d yourdomain.com -d www.yourdomain.com
 ```
+- Follow prompts to get SSL certificates.
+- Configure your web server (nginx, apache, etc.) to use the certs.
 
-### Using systemd
+---
+
+## 8. (Optional) Run as a systemd Service
 
 Create `/etc/systemd/system/cloudmesh.service`:
-
 ```
 [Unit]
-Description=CloudMesh Monitor
+Description=CloudMesh Automation
+After=network.target
 
 [Service]
-WorkingDirectory=/path/to/cloudmesh
-EnvironmentFile=/path/to/cloudmesh/.env
-ExecStart=/path/to/cloudmesh/venv/bin/python script.py
+User=root
+WorkingDirectory=/root/cloudmesh
+Environment="PATH=/root/cloudmesh/venv/bin"
+ExecStart=/root/cloudmesh/venv/bin/python /root/cloudmesh/script.py
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 ```
-
-Enable and start:
-
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable cloudmesh
-sudo systemctl start cloudmesh
+systemctl daemon-reload
+systemctl enable cloudmesh
+systemctl start cloudmesh
+systemctl status cloudmesh
 ```
-
-## 9. Set Up Grafana Dashboard
-
-- Open Grafana at [http://localhost:3000](http://localhost:3000)
-- Add Prometheus as a data source (`http://prometheus:9090`)
-- Import `grafana-dashboard.json` from the repo
-
-## 10. Verify & Troubleshoot
-
-- Check Prometheus at [http://localhost:9090](http://localhost:9090) for metrics
-- Check Grafana dashboard for live data
-- Review logs and `reports/profile.txt` for performance info
-
-## 11. Slack Integration
-
-- To send the weekly HTML report to a Slack channel, create an [Incoming Webhook](https://api.slack.com/messaging/webhooks) in your Slack workspace and set the `SLACK_WEBHOOK_URL` environment variable.
-- The script will automatically post the report after each run if this variable is set.
-
-## 12. CI/CD Automation (Optional)
-
-- Use `.github/workflows/monitor.yml` for scheduled runs and artifact uploads
 
 ---
 
-**For more details, see the main README.md.**
+## 9. Firewall & Security
+
+- Use `ufw` or Hetzner's firewall to allow only necessary ports (e.g., 22 for SSH, 80/443 for web).
+- Keep your server updated: `apt update && apt upgrade -y`
+- Use SSH keys, disable password login if possible.
+
+---
+
+## 10. Monitoring & Troubleshooting
+
+- Check logs: `journalctl -u cloudmesh -f`
+- Reports: `ls reports/`
+- Prometheus/Grafana: see metrics and dashboards as per main README.
+
+---
+
+## 11. Useful Links
+
+- [Hetzner Cloud Console](https://console.hetzner.cloud/)
+- [Cloudflare Dashboard](https://dash.cloudflare.com/)
+- [Let's Encrypt](https://letsencrypt.org/)
+- [Prometheus](https://prometheus.io/)
+- [Grafana](https://grafana.com/)
+
+---
+
+## 12. FAQ
+
+- **Q: My domain doesn't resolve?**
+  - Check Cloudflare DNS, wait for propagation, verify server is running.
+- **Q: Slack upload not visible?**
+  - Ensure bot is in the channel, see README Slack section.
+- **Q: How do I update CloudMesh?**
+  - `git pull` in the repo, then restart the service.
+
+---
+
+For more, see the main [README.md](../README.md).
