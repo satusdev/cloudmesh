@@ -79,17 +79,7 @@ CloudMesh is a Python tool that maps Cloudflare domains and subdomains to Hetzne
 > **Note:** When running Prometheus and Pushgateway in Docker, `localhost` does not work between containers. Use a user-defined Docker network and container names for connectivity.
 
 ```bash
-# Create a Docker network for monitoring tools
-docker network create monitoring
-
-# Start Pushgateway on the network with a name
-docker run -d --name pushgateway --network monitoring -p 9091:9091 prom/pushgateway
-
-# Start Prometheus on the same network with a name and config volume
-docker run -d --name prometheus --network monitoring -p 9090:9090 -v $PWD/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
-
-# Start Grafana on the same network with a name
-docker run -d --name grafana --network monitoring -p 3000:3000 grafana/grafana
+docker-compose up -d
 ```
 
 Update your `prometheus.yml` to use the Pushgateway container name:

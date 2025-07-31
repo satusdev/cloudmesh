@@ -57,7 +57,7 @@ nano .env
 Set:
 - `CLOUDFLARE_TOKEN` (Cloudflare API token)
 - `HETZNER_TOKEN_1` and `HETZNER_PROJECT_NAME_1` (Hetzner API token/project)
-- `PUSHGATEWAY_URL` (e.g., http://localhost:9091 or your monitoring server)
+- `PUSHGATEWAY_URL` (e.g., http://push.yourdomain.com or https://push.yourdomain.com)
 - `SLACK_BOT_TOKEN` and `SLACK_CHANNEL_ID` (if using Slack integration)
 
 ---
@@ -77,15 +77,192 @@ python script.py
 ## 6. Link Your Domain (Cloudflare DNS)
 
 1. **Add your domain to Cloudflare** if not already done.
-2. **Create an A record** in Cloudflare DNS:
-   - Name: `@` (for root) or `app` (for app.yourdomain.com)
-   - IPv4 address: your Hetzner server's public IP
+2. **Create A records** in Cloudflare DNS:
+   - `grafana.yourdomain.com` → your Hetzner server's public IP
+   - `prometheus.yourdomain.com` → your Hetzner server's public IP
+   - `push.yourdomain.com` → your Hetzner server's public IP
+   - (and any app subdomains you need)
    - Proxy status: DNS only (or Proxied if you want Cloudflare protection)
 3. **Wait for DNS propagation** (usually a few minutes).
 
 ---
 
-## 7. (Optional) Secure with HTTPS
+## 7. (Alternative) Deploy Prometheus, Grafana, and Pushgateway with Docker
+
+You can run all monitoring services in Docker containers for easier management and upgrades.
+
+### 1. Install Docker and Docker Compose
+
+```bash
+apt update
+apt install -y docker.io docker-compose
+systemctl enable --now docker
+```
+
+### 2. Example `docker-compose.yml`
+
+Create a `docker-compose.yml` in your project or `/opt/monitoring`:
+
+```yaml
+services:
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+
+  pushgateway:
+    image: prom/pushgateway
+    container_name: pushgateway
+    ports:
+      - "9091:9091"
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+
+networks:
+  monitoring:
+    driver: bridge
+```
+
+- Place your `prometheus.yml` in the same directory.
+- You can add volumes for Grafana dashboards if needed.
+
+### 3. Start the Stack
+
+```bash
+docker-compose up -d
+```
+
+### 4. Nginx Reverse Proxy to Docker Containers
+
+Use the same Nginx configs as above, since the containers expose their ports on localhost.  
+If you want to use Docker networking, set `proxy_pass http://prometheus:9090;` etc., and run Nginx in Docker with `--network monitoring`.
+
+### 5. Access Services
+
+- Grafana: http://grafana.yourdomain.com
+- Prometheus: http://prometheus.yourdomain.com
+- Pushgateway: http://push.yourdomain.com
+
+### 6. Notes
+
+- For production, set strong Grafana admin passwords and use persistent volumes.
+- You can use `docker-compose logs -f` to view logs.
+- To update, run `docker-compose pull && docker-compose up -d`.
+
+---
+
+## 8. Serve Grafana, Prometheus, and Pushgateway with Nginx
+
+To access your monitoring tools via your domain, use Nginx as a reverse proxy for each service.
+
+### 1. Install Nginx
+
+```bash
+apt update
+apt install -y nginx
+```
+
+### 2. Create Nginx Configs
+
+Create a file for each service in `/etc/nginx/sites-available/`:
+
+**/etc/nginx/sites-available/grafana**
+```
+server {
+    listen 80;
+    server_name grafana.yourdomain.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**/etc/nginx/sites-available/prometheus**
+```
+server {
+    listen 80;
+    server_name prometheus.yourdomain.com;
+
+    location / {
+        proxy_pass http://localhost:9090;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**/etc/nginx/sites-available/pushgateway**
+```
+server {
+    listen 80;
+    server_name push.yourdomain.com;
+
+    location / {
+        proxy_pass http://localhost:9091;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### 3. Enable the Sites
+
+```bash
+ln -s /etc/nginx/sites-available/grafana /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/prometheus /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/pushgateway /etc/nginx/sites-enabled/
+nginx -t
+systemctl reload nginx
+```
+
+### 4. (Optional) Add SSL with Let's Encrypt
+
+```bash
+apt install -y certbot python3-certbot-nginx
+certbot --nginx -d grafana.yourdomain.com -d prometheus.yourdomain.com -d push.yourdomain.com
+```
+Follow prompts to secure each service with HTTPS.
+
+---
+
+### 5. Make Grafana Available to Prometheus and Pushgateway
+
+- **Grafana Data Source:**  
+  When adding Prometheus as a data source in Grafana, use the public URL:  
+  `http://prometheus.yourdomain.com` (or `https://prometheus.yourdomain.com` if using SSL)
+- **Prometheus Pushgateway Target:**  
+  In your `prometheus.yml`, set the Pushgateway target to:  
+  `push.yourdomain.com:9091` (or `push.yourdomain.com:80` if using Nginx proxy, or `https` for SSL)
+- **Firewall/Nginx:**  
+  Ensure your firewall and Nginx allow access between these services on the correct ports.
+
+---
+
+## 8. (Optional) Secure with HTTPS
 
 If you want to serve web content (e.g., a dashboard or API), use Let's Encrypt:
 ```bash
@@ -100,7 +277,7 @@ certbot certonly --standalone -d yourdomain.com -d www.yourdomain.com
 
 ---
 
-## 8. (Optional) Run as a systemd Service
+## 9. (Optional) Run as a systemd Service
 
 Create `/etc/systemd/system/cloudmesh.service`:
 ```
@@ -127,7 +304,7 @@ systemctl status cloudmesh
 
 ---
 
-## 9. Firewall & Security
+## 10. Firewall & Security
 
 - Use `ufw` or Hetzner's firewall to allow only necessary ports (e.g., 22 for SSH, 80/443 for web).
 - Keep your server updated: `apt update && apt upgrade -y`
@@ -135,15 +312,19 @@ systemctl status cloudmesh
 
 ---
 
-## 10. Monitoring & Troubleshooting
+## 11. Monitoring & Troubleshooting
 
 - Check logs: `journalctl -u cloudmesh -f`
 - Reports: `ls reports/`
-- Prometheus/Grafana: see metrics and dashboards as per main README.
+- Prometheus/Grafana:  
+  - Grafana: https://grafana.yourdomain.com  
+  - Prometheus: https://prometheus.yourdomain.com  
+  - Pushgateway: https://push.yourdomain.com  
+  - In Grafana, add Prometheus as a data source using the public URL.
 
 ---
 
-## 11. Useful Links
+## 12. Useful Links
 
 - [Hetzner Cloud Console](https://console.hetzner.cloud/)
 - [Cloudflare Dashboard](https://dash.cloudflare.com/)
@@ -153,7 +334,7 @@ systemctl status cloudmesh
 
 ---
 
-## 12. FAQ
+## 13. FAQ
 
 - **Q: My domain doesn't resolve?**
   - Check Cloudflare DNS, wait for propagation, verify server is running.
