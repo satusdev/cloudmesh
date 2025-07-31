@@ -35,6 +35,10 @@ CloudMesh is a Python tool that maps Cloudflare domains and subdomains to Hetzne
 - **Visual Clarity:** Highlights unmatched IPs (where no Hetzner server is found) in red for easy identification.
 - **Summary Statistics:** Displays total domains, A records, matched servers, and total monthly spending (€) at the top of the report.
 - **Dual Output Formats:** Generates both an HTML report (`reports/mapping.html`) for browser viewing and a timestamped PDF report (e.g., `reports/mapping_YYYYMMDD_HHMMSS.pdf`) for archiving or sharing.
+- **Prometheus & Grafana Monitoring:** Pushes metrics to Prometheus Pushgateway for visualization in Grafana dashboards.
+- **.env Support:** Loads configuration from a `.env` file automatically (using `python-dotenv`), with fallback to `config.json` if needed.
+- **Slack Integration (New!):** Automatically uploads the PDF report to a Slack channel using the latest Slack external file upload API (see below).
+- **Robust Error Handling:** Clear error messages for missing configuration, API issues, and Slack upload problems.
 - **Extensible Design:** Built to support future enhancements like monitoring and automation.
 
 ### Prerequisites
@@ -61,7 +65,7 @@ CloudMesh is a Python tool that maps Cloudflare domains and subdomains to Hetzne
   ```
 - Install required Python packages:
   ```bash
-  pip install requests pdfkit prometheus_client
+  pip install requests pdfkit prometheus_client dotenv
   ```
 - Install wkhtmltopdf:
   - Ubuntu/Debian: `sudo apt-get install wkhtmltopdf`
@@ -119,6 +123,55 @@ scrape_configs:
   ```
 
   If running in CI/CD, set these as repository secrets.
+
+---
+
+## Slack Integration 🚀
+
+CloudMesh can automatically upload the generated PDF report to a Slack channel using the latest Slack external file upload API.
+
+### Setup
+
+1. **Create a Slack App** at https://api.slack.com/apps (choose "From scratch").
+2. **Add Bot Token Scopes** in "OAuth & Permissions":
+   - `chat:write` (Send messages as your bot)
+   - `files:write` (Upload, edit, and delete files as your bot)
+   - `incoming-webhook` (optional, for posting messages)
+3. **Install the app to your workspace** and copy the **Bot User OAuth Token** (starts with `xoxb-...`).
+4. **Invite the bot to your target channel** (including private channels) with `/invite @your-bot-name`.
+5. **Add these to your `.env` file:**
+   ```
+   SLACK_BOT_TOKEN=xoxb-your-bot-token
+   SLACK_CHANNEL_ID=your-channel-id
+   ```
+   - To get the channel ID: In Slack, right-click the channel and select "Copy Channel ID".
+
+### How it Works
+
+- The script uses Slack's `files.getUploadURLExternal` and `files.completeUploadExternal` APIs to upload the PDF.
+- The file is uploaded and shared directly in the specified channel.
+- If the bot is not a member of the channel, or if the channel ID is incorrect, the upload will silently fail or not appear.
+
+### Troubleshooting
+
+- **File not visible in channel:** Ensure the bot is invited to the channel and the channel ID is correct.
+- **Permissions error:** Double-check that your bot has the required scopes.
+- **API errors:** The script prints detailed error messages for Slack API failures.
+- **Scopes required:**
+  - `chat:write`
+  - `files:write`
+  - `incoming-webhook` (optional)
+
+### Example `.env` for Slack
+
+```
+CLOUDFLARE_TOKEN=your_cloudflare_token
+HETZNER_TOKEN_1=your_hetzner_token
+HETZNER_PROJECT_NAME_1=your_project_name
+PUSHGATEWAY_URL=http://pushgateway:9091
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_CHANNEL_ID=your-channel-id
+```
 
 ---
 
@@ -182,7 +235,6 @@ scrape_configs:
 5. View real-time metrics and visualizations in Grafana.
 
 
-
 ### Usage
 
 - **Run the Script:**
@@ -202,23 +254,6 @@ scrape_configs:
   - **Domain Tables:** Each domain has its own table listing subdomains, IPs, projects, server names, status, creation dates, server types, prices, traffic, and labels.
   - **Unmatched IPs:** Highlighted in red for easy identification.
 
-
-## Getting Started ☣️
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/satusdev/cloudmesh.git
-    ```
-2.  **Navigate to the project directory:**
-    ```bash
-    cd cloudmesh
-    ```
-3.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
-4.  **Start coding!** 🎉
-
 ## Contributing
 
 Contributions are welcome! If you have an improvement or a new feature, please follow these steps:
@@ -235,105 +270,6 @@ Contributions are welcome! If you have an improvement or a new feature, please f
 </a>
 
 Made with [contrib.rocks](https://contrib.rocks).
-
-## Monitoring with Prometheus & Grafana
-
-CloudMesh supports real-time monitoring via Prometheus and Grafana.
-
-### Usage: Accessing Prometheus & Grafana
-
-#### Prometheus
-
-1. Start Prometheus and your script as described in the setup.
-2. Open [http://localhost:9090](http://localhost:9090) in your browser.
-3. In the top menu, click **Status** → **Targets**.
-   - Confirm that the Pushgateway is listed as a target and its state is **UP**.
-4. To check for metrics:
-   - Click **Graph** or **Explore**.
-   - Enter a metric name such as `cloudmesh_script_runs_total` and click **Execute**.
-   - If you see data, Prometheus is receiving metrics from your script.
-5. **Troubleshooting:**  
-   - If you see no targets or metrics, ensure Prometheus is running with the correct `prometheus.yml` and that your script has pushed metrics to the Pushgateway.
-
-#### Grafana
-
-1. Start Grafana as described in the setup.
-2. Open [http://localhost:3000](http://localhost:3000) in your browser.
-3. Log in with the default credentials:
-   - Username: `admin`
-   - Password: `admin` (you will be prompted to change this on first login)
-4. In the left sidebar, click the **gear icon (Configuration)** → **Data Sources** → **Add data source**.
-5. Select **Prometheus**.
-6. In the **HTTP** section, set the URL to `http://localhost:9090`.
-7. Click **Save & Test**. You should see "Data source is working".
-8. In the left sidebar, click the **four squares icon (Dashboards)** → **Import**.
-9. Click **Upload JSON file** and select `grafana-dashboard.json` from your project directory.
-10. Assign the imported dashboard to the Prometheus data source you just created.
-11. Click **Import**. The dashboard should now display CloudMesh metrics.
-12. **Troubleshooting:**  
-    - If the dashboard is empty, ensure your script has run and metrics are present in Prometheus.
-    - Double-check that the correct data source is selected for the dashboard panels.
-
-**Security Note:**  
-Change the Grafana admin password after your first login for security.
-
-### How it works
-
-- Each run of `script.py` pushes metrics (run count, duration, domains, records, errors, etc.) to a Prometheus Pushgateway.
-- Prometheus scrapes the Pushgateway and stores metrics.
-- Grafana visualizes these metrics using the provided dashboard.
-
-### Setup
-
-1. **Install Prometheus, Pushgateway, and Grafana** (Docker example):
-
-   ```bash
-   docker run -d -p 9090:9090 -v $PWD/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
-   docker run -d -p 9091:9091 prom/pushgateway
-   docker run -d -p 3000:3000 grafana/grafana
-   ```
-
-2. **Configure Pushgateway URL**
-
-   Set the `PUSHGATEWAY_URL` environment variable:
-
-   ```
-   PUSHGATEWAY_URL=http://localhost:9091
-   ```
-
-3. **Run the script**
-
-   ```bash
-   python script.py
-   ```
-
-   Metrics will be pushed to the Pushgateway after each run.
-
-4. **Import the Grafana Dashboard**
-
-   - Open Grafana at [http://localhost:3000](http://localhost:3000)
-   - Add Prometheus as a data source (URL: `http://localhost:9090`)
-   - Import `grafana-dashboard.json` from the repo
-
-### Metrics Collected
-
-- Script runs, errors, run duration
-- Domains, A records, matched servers, unmatched IPs
-
-### Example Prometheus config
-
-See `prometheus.yml` in the repo.
-
-
-- **Prometheus and Grafana Integration:** Add real-time monitoring with Prometheus to collect server metrics (e.g., CPU, memory, actual traffic) and visualize them in Grafana dashboards for a dynamic, at-a-glance view.
-- **Accurate Traffic Data:** Integrate Hetzner’s Robot Webservice or server logs to fetch real-time network traffic, replacing the current placeholder.
-- **Automated Cleanup:** Add functionality to power off or delete unused servers directly via the Hetzner API, based on criteria like low traffic or age.
-- **Interactive Reports:** Enhance the HTML report with sorting, filtering, and search capabilities using JavaScript.
-- **Extended DNS Support:** Include other DNS record types (e.g., CNAME, MX) to provide a complete DNS-to-server mapping.
-- **Notifications:** Send alerts (via email or Slack) for unmatched IPs or servers needing attention (e.g., high cost, low usage).
-- **Multi-Provider Support:** Expand to map domains to servers from other providers (e.g., AWS, DigitalOcean).
-
-These enhancements can be prioritized based on your needs, making CloudHetznerSync a robust tool for infrastructure management.
 
 ## Getting Help 🆘
 
