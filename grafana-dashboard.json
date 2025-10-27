@@ -1,133 +1,547 @@
 {
-  "uid": "cloudmesh-table",
-  "title": "CloudMesh Domain Mapping Table",
-  "timezone": "browser",
-  "schemaVersion": 37,
-  "version": 1,
-  "refresh": "10s",
-  "templating": {
+  "annotations": {
     "list": [
       {
-        "name": "domain",
-        "type": "query",
-        "datasource": "prometheus",
-        "refresh": 1,
-        "query": "label_values(cloudmesh_domain_mapping_info, domain)",
-        "includeAll": true,
-        "multi": true,
-        "sort": 1
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
       }
     ]
   },
+  "description": "Enhanced CloudMesh Dashboard with Excel-like table and improved data organization",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
   "panels": [
     {
-      "type": "stat",
-      "title": "Total Domains",
-      "datasource": "prometheus",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "8.5.0",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
           "expr": "cloudmesh_domains_total",
+          "interval": "",
+          "legendFormat": "",
           "refId": "A"
         }
       ],
-      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 }
+      "title": "Total Domains",
+      "type": "stat"
     },
     {
-      "type": "stat",
-      "title": "Total A Records",
-      "datasource": "prometheus",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "8.5.0",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
           "expr": "cloudmesh_a_records_total",
-          "refId": "B"
-        }
-      ],
-      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 }
-    },
-    {
-      "type": "stat",
-      "title": "Matched Servers",
-      "datasource": "prometheus",
-      "targets": [
-        {
-          "expr": "cloudmesh_matched_servers_total",
-          "refId": "C"
-        }
-      ],
-      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 }
-    },
-    {
-      "type": "stat",
-      "title": "Unmatched IPs",
-      "datasource": "prometheus",
-      "targets": [
-        {
-          "expr": "cloudmesh_unmatched_ips_total",
-          "refId": "D"
-        }
-      ],
-      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 }
-    },
-    {
-      "type": "stat",
-      "title": "Script Errors",
-      "datasource": "prometheus",
-      "targets": [
-        {
-          "expr": "cloudmesh_script_errors_total",
-          "refId": "E"
-        }
-      ],
-      "gridPos": { "x": 0, "y": 4, "w": 6, "h": 4 }
-    },
-    {
-      "type": "stat",
-      "title": "Avg Server Uptime (hrs)",
-      "datasource": "prometheus",
-      "targets": [
-        {
-          "expr": "avg(cloudmesh_server_uptime_seconds) / 3600",
-          "refId": "F"
-        }
-      ],
-      "gridPos": { "x": 6, "y": 4, "w": 6, "h": 4 }
-    },
-    {
-      "type": "stat",
-      "title": "Avg DNS TTL (s)",
-      "datasource": "prometheus",
-      "targets": [
-        {
-          "expr": "avg(cloudmesh_dns_ttl_seconds)",
-          "refId": "G"
-        }
-      ],
-      "gridPos": { "x": 12, "y": 4, "w": 6, "h": 4 }
-    },
-    {
-      "type": "stat",
-      "title": "Healthy Servers (%)",
-      "datasource": "prometheus",
-      "targets": [
-        {
-          "expr": "100 * sum(cloudmesh_server_health_status) / count(cloudmesh_server_health_status)",
-          "refId": "H"
-        }
-      ],
-      "gridPos": { "x": 18, "y": 4, "w": 6, "h": 4 }
-    },
-    {
-      "type": "table",
-      "title": "Domain Mapping Table",
-      "datasource": "prometheus",
-      "targets": [
-        {
-          "expr": "cloudmesh_domain_mapping_info{domain=~\"$domain\"}",
-          "format": "table",
+          "interval": "",
+          "legendFormat": "",
           "refId": "A"
         }
       ],
+      "title": "Total A Records",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "8.5.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "expr": "cloudmesh_matched_servers_total",
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Matched Servers",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "8.5.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "expr": "cloudmesh_unmatched_ips_total",
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Unmatched IPs",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "center",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "server_name"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": null
+                      },
+                      {
+                        "color": "green",
+                        "value": 1
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "price_monthly"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "yellow",
+                        "value": 20
+                      },
+                      {
+                        "color": "red",
+                        "value": 50
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "0": {
+                        "color": "red",
+                        "index": 0,
+                        "text": "DOWN"
+                      },
+                      "1": {
+                        "color": "green",
+                        "index": 1,
+                        "text": "UP"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ip"
+            },
+            "properties": [
+              {
+                "id": "custom.align",
+                "value": "left"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "project"
+            },
+            "properties": [
+              {
+                "id": "custom.align",
+                "value": "left"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "labels"
+            },
+            "properties": [
+              {
+                "id": "custom.align",
+                "value": "left"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "id": 5,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Domain"
+          },
+          {
+            "desc": false,
+            "displayName": "Subdomain"
+          }
+        ]
+      },
+      "pluginVersion": "8.5.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "expr": "cloudmesh_domain_mapping_info_clean{domain=~\"$domain\"}",
+          "format": "table",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Domain to Server Mapping Table",
       "transformations": [
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "domain": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "subdomain": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "ip": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "project": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "server_name": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "status": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "created": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "server_type": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "price_monthly": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "traffic_mb": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "labels": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        },
         {
           "id": "organize",
           "options": {
@@ -135,34 +549,90 @@
               "Time": true,
               "__name__": true,
               "created": true,
-              "domain": true,
               "exported_job": true,
               "instance": true
             },
-            "order": [
-              "subdomain",
-              "ip",
-              "project",
-              "server_name",
-              "status",
-              "server_type",
-              "price_monthly",
-              "traffic_mb",
-              "labels"
-            ]
+            "indexByName": {},
+            "renameByName": {
+              "server_name": "Server Name",
+              "price_monthly": "Price (€/month)",
+              "traffic_mb": "Traffic (MB)",
+              "server_type": "Server Type"
+            }
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "exclude": {
+              "names": []
+            },
+            "include": {
+              "names": [
+                "domain",
+                "subdomain",
+                "ip",
+                "project",
+                "Server Name",
+                "status",
+                "Server Type",
+                "Price (€/month)",
+                "Traffic (MB)",
+                "labels"
+              ]
+            }
           }
         }
       ],
-      "options": {
-        "showHeader": true,
-        "showSearch": true,
-        "showFilters": true
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 16 }
+      "type": "table"
     }
-  ]
+  ],
+  "refresh": "10s",
+  "schemaVersion": 35,
+  "style": "dark",
+  "tags": [
+    "cloudmesh",
+    "monitoring"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "Prometheus"
+        },
+        "definition": "label_values(cloudmesh_domain_mapping_info_clean, domain)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Domain",
+        "multi": true,
+        "name": "domain",
+        "options": [],
+        "query": {
+          "query": "label_values(cloudmesh_domain_mapping_info_clean, domain)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "CloudMesh Enhanced Dashboard",
+  "uid": "cloudmesh-enhanced",
+  "version": 1,
+  "weekStart": ""
 }

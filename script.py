@@ -98,106 +98,26 @@ def fetch_dns_records(token, zone_id):
     headers = {"Authorization": f"Bearer {token}"}
     return fetch_all(f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records", headers)
 
-def fetch_hetzner_servers(token):
+def fetch_hetzner_servers(token, project_name):
     headers = {"Authorization": f"Bearer {token}"}
-    return fetch_all("https://api.hetzner.cloud/v1/servers", headers)
+    return fetch_all("https://api.hetzner.cloud/v1/servers", headers), project_name
 
 def parallel_fetch_hetzner_servers(projects):
     results = []
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_project = {
-            executor.submit(fetch_hetzner_servers, project['api_token']): project
-            for project in projects
-        }
+    with ThreadPoolExecutor(max_workers=len(projects)) as executor:
+        future_to_project = {executor.submit(fetch_hetzner_servers, project['api_token'], project['project_name']): project for project in projects}
         for future in future_to_project:
-            project = future_to_project[future]
-            try:
-                servers = future.result()
-                for server in servers:
-                    results.append((project, server))
-            except Exception:
-                continue
+            servers, project_name = future.result()
+            for server in servers:
+                results.append(({'project_name': project_name}, server))
     return results
 
-# Health check
 def tcp_health_check(ip, port=80, timeout=2):
     try:
         with socket.create_connection((ip, port), timeout=timeout):
-            return 1
-    except Exception:
-        return 0
-
-# Slack integration functions
-def send_message_to_slack(token, channel_id, text):
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json'
-    }
-    data = {
-        "channel": channel_id,
-        "text": text
-    }
-    response = requests.post('https://slack.com/api/chat.postMessage', headers=headers, json=data)
-    response_json = response.json()
-
-    if not response_json['ok']:
-        print(f"Error in chat.postMessage: {response_json['error']}")
-        return response_json
-
-    return response_json
-
-def upload_to_slack(file_path, token, channel_id, initial_comment):
-    filename = os.path.basename(file_path)
-    file_size = os.path.getsize(file_path)
-
-    headers = {
-        'Authorization': f'Bearer {token}',
-    }
-    data = {
-        "filename": filename,
-        "length": file_size
-    }
-    response = requests.post('https://slack.com/api/files.getUploadURLExternal', headers=headers, data=data)
-    response_json = response.json()
-
-    if not response_json['ok']:
-        print(f"Error in getUploadURLExternal: {response_json['error']}")
-        return response_json
-
-    upload_url = response_json['upload_url']
-    file_id = response_json['file_id']
-
-    with open(file_path, 'rb') as file_content:
-        files = {'file': (filename, file_content, 'application/pdf')}
-        upload_response = requests.post(upload_url, files=files)
-        if upload_response.status_code != 200:
-            print(f"Error uploading file: {upload_response.status_code}")
-            print(upload_response.text)
-            return {"ok": False, "error": "upload_failed"}
-
-    headers['Content-Type'] = 'application/json'
-    data = {
-        "files": [{"id": file_id, "title": filename}],
-        "channel_id": channel_id,
-        "initial_comment": initial_comment
-    }
-    complete_response = requests.post(
-        'https://slack.com/api/files.completeUploadExternal',
-        headers=headers,
-        json=data
-    )
-
-    try:
-        complete_response_json = complete_response.json()
-    except ValueError:
-        print(f"Error in completeUploadExternal: Unable to decode JSON response")
-        print(complete_response.text)
-        return {"ok": False, "error": "json_decode_failed"}
-
-    if not complete_response_json['ok']:
-        print(f"Error in completeUploadExternal: {complete_response_json['error']}")
-
-    return complete_response_json
+            return 1  # Success
+    except (socket.timeout, socket.error):
+        return 0  # Failure
 
 # Report generation
 def generate_html_report(mapping_by_domain, unique_domains, total_a_records, matched_server_ips):
@@ -287,7 +207,7 @@ def save_report(html, timestamp):
 
     return pdf_file
 
-# Prometheus metrics setup
+# Enhanced Prometheus metrics setup
 def setup_prometheus_metrics():
     registry = CollectorRegistry()
     metrics = {
@@ -316,9 +236,16 @@ def setup_prometheus_metrics():
             ['server_name', 'ip'],
             registry=registry
         ),
-        'mapping_info': Gauge(
-            'cloudmesh_domain_mapping_info',
-            'Domain to server mapping info',
+        # Enhanced metrics for better dashboard
+        'domain_summary': Gauge(
+            'cloudmesh_domain_summary',
+            'Domain summary with server counts and costs',
+            ['domain', 'matched_servers', 'total_records', 'total_cost'],
+            registry=registry
+        ),
+        'mapping_info_clean': Gauge(
+            'cloudmesh_domain_mapping_info_clean',
+            'Clean domain to server mapping info (deduplicated)',
             [
                 'domain', 'subdomain', 'ip', 'project', 'server_name', 'status',
                 'created', 'server_type', 'price_monthly', 'traffic_mb', 'labels'
@@ -328,7 +255,7 @@ def setup_prometheus_metrics():
     }
     return registry, metrics
 
-# Main processing logic
+# Enhanced processing logic with better deduplication
 def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
     now = datetime.utcnow()
     all_servers = []
@@ -393,7 +320,10 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
     total_a_records = 0
     matched_server_ips = set()
     unmatched_ips = set()
-    seen_label_sets = set()
+
+    # Enhanced deduplication using dictionary
+    unique_mappings = {}
+    domain_stats = {}
 
     for record in a_records:
         domain = record['domain']
@@ -402,9 +332,18 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
         total_a_records += 1
         if domain not in mapping_by_domain:
             mapping_by_domain[domain] = []
+            domain_stats[domain] = {'matched': 0, 'total': 0, 'cost': 0}
+
+        # Create unique key for deduplication
+        unique_key = f"{domain}:{record['subdomain']}:{ip}"
+        domain_stats[domain]['total'] += 1
+
         if ip in ip_to_server:
             server = ip_to_server[ip]
             matched_server_ips.add(ip)
+            domain_stats[domain]['matched'] += 1
+            domain_stats[domain]['cost'] += server['price_monthly']
+
             mapping_item = {
                 'subdomain': record['subdomain'],
                 'ip': ip,
@@ -431,26 +370,27 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                 'traffic_mb': 0,
                 'labels': 'N/A'
             }
-        mapping_by_domain[domain].append(mapping_item)
 
-        label_tuple = (
-            domain,
-            mapping_item['subdomain'],
-            mapping_item['ip'],
-            mapping_item['project'],
-            mapping_item['server_name'],
-            mapping_item['status'],
-            mapping_item['created'],
-            mapping_item['server_type'],
-            str(mapping_item['price_monthly']),
-            str(mapping_item['traffic_mb']),
-            mapping_item['labels']
-        )
-        if label_tuple in seen_label_sets:
-            continue
-        seen_label_sets.add(label_tuple)
+        # Only add if we haven't seen this exact mapping before
+        if unique_key not in unique_mappings:
+            unique_mappings[unique_key] = mapping_item
+            mapping_by_domain[domain].append(mapping_item)
 
-        metrics['mapping_info'].labels(
+    # Push domain summary metrics
+    for domain, stats in domain_stats.items():
+        metrics['domain_summary'].labels(
+            domain=domain,
+            matched_servers=str(stats['matched']),
+            total_records=str(stats['total']),
+            total_cost=str(round(stats['cost'], 2))
+        ).set(1)
+
+    # Push deduplicated mapping metrics
+    for unique_key, mapping_item in unique_mappings.items():
+        domain = unique_key.split(':')[0]
+
+        # Only push for valid entries to reduce noise
+        metrics['mapping_info_clean'].labels(
             domain=domain,
             subdomain=mapping_item['subdomain'],
             ip=mapping_item['ip'],
@@ -466,6 +406,79 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
 
     return mapping_by_domain, unique_domains, total_a_records, matched_server_ips, unmatched_ips
 
+# Slack integration functions
+def send_message_to_slack(token, channel_id, text):
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    data = {
+        "channel": channel_id,
+        "text": text
+    }
+    response = requests.post('https://slack.com/api/chat.postMessage', headers=headers, json=data)
+    response_json = response.json()
+
+    if not response_json['ok']:
+        print(f"Error in chat.postMessage: {response_json['error']}")
+        return response_json
+
+    return response_json
+
+def upload_to_slack(file_path, token, channel_id, initial_comment):
+    filename = os.path.basename(file_path)
+    file_size = os.path.getsize(file_path)
+
+    headers = {
+        'Authorization': f'Bearer {token}',
+    }
+    data = {
+        "filename": filename,
+        "length": file_size
+    }
+    response = requests.post('https://slack.com/api/files.getUploadURLExternal', headers=headers, data=data)
+    response_json = response.json()
+
+    if not response_json['ok']:
+        print(f"Error in getUploadURLExternal: {response_json['error']}")
+        return response_json
+
+    upload_url = response_json['upload_url']
+    file_id = response_json['file_id']
+
+    with open(file_path, 'rb') as file_content:
+        files = {'file': (filename, file_content, 'application/pdf')}
+        upload_response = requests.post(upload_url, files=files)
+        if upload_response.status_code != 200:
+            print(f"Error uploading file: {upload_response.status_code}")
+            print(upload_response.text)
+            return {"ok": False, "error": "upload_failed"}
+
+    headers['Content-Type'] = 'application/json'
+    data = {
+        "files": [{"id": file_id, "title": filename}],
+        "channel_id": channel_id,
+        "initial_comment": initial_comment
+    }
+    complete_response = requests.post(
+        'https://slack.com/api/files.completeUploadExternal',
+        headers=headers,
+        json=data
+    )
+
+    try:
+        complete_response_json = complete_response.json()
+    except ValueError:
+        print(f"Error in completeUploadExternal: Unable to decode JSON response")
+        print(complete_response.text)
+        return {"ok": False, "error": "json_decode_failed"}
+
+    if not complete_response_json['ok']:
+        print(f"Error in completeUploadExternal: {complete_response_json['error']}")
+
+    return complete_response_json
+
+# Main function
 def main():
     profiler = cProfile.Profile()
     profiler.enable()
@@ -486,48 +499,53 @@ def main():
         html = generate_html_report(mapping_by_domain, unique_domains, total_a_records, matched_server_ips)
         pdf_file = save_report(html, datetime.now().strftime("%Y%m%d_%H%M%S"))
 
-        slack_bot_token = os.environ.get("SLACK_BOT_TOKEN")
-        slack_channel_id = os.environ.get("SLACK_CHANNEL_ID")
-        if slack_bot_token and slack_channel_id:
-            try:
-                initial_comment = "CloudMesh Weekly Report - Server and Cloudflare monitoring (PDF)"
-                upload_result = upload_to_slack(pdf_file, slack_bot_token, slack_channel_id, initial_comment)
-                if upload_result.get("ok"):
-                    print("PDF report uploaded to Slack successfully.")
-                    file_name = os.path.basename(pdf_file)
-                    send_message_to_slack(
-                        slack_bot_token,
-                        slack_channel_id,
-                        f"CloudMesh Weekly Report (PDF) uploaded: {file_name}"
-                    )
-                else:
-                    print(f"Failed to upload PDF to Slack: {upload_result.get('error')}")
-            except Exception as e:
-                print(f"Slack error: {e}")
+        # slack_bot_token = os.environ.get("SLACK_BOT_TOKEN")
+        # slack_channel_id = os.environ.get("SLACK_CHANNEL_ID")
+        # if slack_bot_token and slack_channel_id:
+        #     try:
+        #         initial_comment = "CloudMesh Weekly Report - Server and Cloudflare monitoring (PDF)"
+        #         upload_result = upload_to_slack(pdf_file, slack_bot_token, slack_channel_id, initial_comment)
+        #         if upload_result.get("ok"):
+        #             print("PDF report uploaded to Slack successfully.")
+        #             file_name = os.path.basename(pdf_file)
+        #             send_message_to_slack(
+        #                 slack_bot_token,
+        #                 slack_channel_id,
+        #                 f"CloudMesh Weekly Report (PDF) uploaded: {file_name}"
+        #             )
+        #         else:
+        #             print(f"Slack upload returned an error: {upload_result.get('error')}")
+        #     except Exception as e:
+        #         print(f"Error uploading to Slack: {e}")
 
-        metrics['run_counter'].inc()
-        metrics['run_duration'].set(time.time() - start_time)
         metrics['domains'].set(len(unique_domains))
         metrics['a_records'].set(total_a_records)
         metrics['matched_servers'].set(len(matched_server_ips))
         metrics['unmatched_ips'].set(len(unmatched_ips))
+        print(f"Processing complete. {len(unique_domains)} domains, {total_a_records} A records, {len(matched_server_ips)} matched servers.")
 
     except Exception as e:
         error_occurred = True
+        print(f"Error during processing: {e}")
         metrics['error_counter'].inc()
-        print(f"Script error: {e}")
         raise
+
     finally:
+        duration = time.time() - start_time
+        metrics['run_duration'].set(duration)
+        metrics['run_counter'].inc()
+
         try:
-            push_to_gateway(pushgateway_url, job='cloudmesh_script', registry=registry)
-            print(f"Prometheus metrics pushed to {pushgateway_url}")
+            push_to_gateway(pushgateway_url, job='cloudmesh', registry=registry)
+            print("Metrics pushed to Prometheus successfully.")
         except Exception as e:
-            print(f"Error pushing metrics to Pushgateway: {e}")
-        profiler.disable()
-        with open("reports/profile.txt", "w") as f:
-            ps = pstats.Stats(profiler, stream=f)
-            ps.sort_stats("cumulative")
-            ps.print_stats()
+            print(f"Error pushing metrics to Prometheus: {e}")
+
+    profiler.disable()
+    profiler_stats = pstats.Stats(profiler)
+    profiler_stats.sort_stats('cumulative')
+    print("\n--- Performance Profile ---")
+    profiler_stats.print_stats(10)
 
 if __name__ == "__main__":
     main()

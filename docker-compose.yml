@@ -1,33 +1,36 @@
+  services:
+    prometheus:
+      image: prom/prometheus
+      container_name: prometheus
+      volumes:
+        - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      ports:
+        - "9912:9090"  # Changed to avoid conflicts
+      networks:
+        - monitoring
 
-services:
-  prometheus:
-    image: prom/prometheus
-    container_name: prometheus
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9902:9902"
-    networks:
-      - monitoring
+    pushgateway:
+      image: prom/pushgateway
+      container_name: pushgateway
+      ports:
+        - "9913:9091"  # Changed to avoid conflicts
+      networks:
+        - monitoring
 
-  pushgateway:
-    image: prom/pushgateway
-    container_name: pushgateway
-    ports:
-      - "9903:9903"
-    networks:
-      - monitoring
+    grafana:
+      image: grafana/grafana
+      container_name: grafana
+      ports:
+        - "9911:3000"  # Changed to avoid conflicts
+      networks:
+        - monitoring
+      environment:
+        - GF_SECURITY_ADMIN_PASSWORD=admin
+      volumes:
+        - ./grafana-provisioning/datasources:/etc/grafana/provisioning/datasources
+        - ./grafana-provisioning/dashboards:/etc/grafana/provisioning/dashboards
+        - ./grafana-dashboard.json:/etc/grafana/provisioning/dashboards/cloudmesh-dashboard.json
 
-  grafana:
-    image: grafana/grafana
-    container_name: grafana
-    ports:
-      - "9901:3000"
-    networks:
-      - monitoring
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-
-networks:
-  monitoring:
-    driver: bridge
+  networks:
+    monitoring:
+      driver: bridge
