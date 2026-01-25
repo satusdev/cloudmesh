@@ -65,7 +65,7 @@ CloudMesh is a Python tool that maps Cloudflare domains and subdomains to Hetzne
   ```
 - Install required Python packages:
   ```bash
-  pip install requests pdfkit prometheus_client dotenv
+  pip install requests pdfkit prometheus_client dotenv python-whois
   ```
 - Install wkhtmltopdf:
   - Ubuntu/Debian: `sudo apt-get install wkhtmltopdf`

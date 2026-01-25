@@ -1,6 +1,6 @@
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import pdfkit
 import time
@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from prometheus_client import CollectorRegistry, Gauge, Counter, push_to_gateway
 import cProfile
 import pstats
+import whois  # For fetching domain expiration dates
 
 # Load environment variables
 load_dotenv()
@@ -115,14 +116,110 @@ def parallel_fetch_hetzner_servers(projects):
 def tcp_health_check(ip, port=80, timeout=2):
     try:
         with socket.create_connection((ip, port), timeout=timeout):
-            return 1  # Success
+            return 1 # Success
     except (socket.timeout, socket.error):
-        return 0  # Failure
+        return 0 # Failure
+
+# WHOIS cache and helper
+whois_cache = {}
+
+def get_domain_expiry(domain):
+    if domain in whois_cache:
+        return whois_cache[domain]
+
+    try:
+        w = whois.whois(domain)
+        expiry = w.expiration_date
+
+        # Handle different formats (datetime, list, string)
+        if isinstance(expiry, list):
+            expiry = expiry[0] if expiry else None
+        if isinstance(expiry, str):
+            try:
+                expiry = datetime.strptime(expiry, "%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                try:
+                    expiry = datetime.strptime(expiry.split()[0], "%Y-%m-%d")
+                except ValueError:
+                    expiry = None
+
+        if isinstance(expiry, datetime):
+            expiry_str = expiry.strftime("%Y-%m-%d")
+        else:
+            expiry_str = "N/A"
+
+        whois_cache[domain] = expiry_str
+        time.sleep(1.2)  # Rate limiting to avoid WHOIS bans
+        return expiry_str
+
+    except Exception as e:
+        print(f"WHOIS error for {domain}: {e}")
+        whois_cache[domain] = "Error / N/A"
+        return "Error / N/A"
+
+# ────────────────────────────────────────────────
+# NEW: Helper to calculate days left to expiration
+# ────────────────────────────────────────────────
+def get_days_to_expiry(expiry_str):
+    if expiry_str in ("N/A", "Error / N/A"):
+        return None
+    try:
+        expiry_date = datetime.strptime(expiry_str, "%Y-%m-%d")
+        today = datetime.now().date()
+        delta = expiry_date.date() - today
+        return delta.days
+    except Exception:
+        return None
+
+# ────────────────────────────────────────────────
+# NEW: Send warning message to Slack about domains
+# expiring in < 30 days (including already expired)
+# ────────────────────────────────────────────────
+def send_expiring_domains_warning(unique_domains, slack_token, slack_channel):
+    if not slack_token or not slack_channel:
+        return
+
+    expiring = []
+    for domain in unique_domains:
+        expiry_str = get_domain_expiry(domain)
+        days = get_days_to_expiry(expiry_str)
+        if days is not None and days <= 30:
+            expiring.append((domain, expiry_str, days))
+
+    if not expiring:
+        return  # nothing to report
+
+    lines = ["⚠️ *DOMAINS EXPIRING SOON (≤ 30 days)* ⚠️"]
+    for domain, exp_date, days_left in sorted(expiring, key=lambda x: x[2]):
+        if days_left < 0:
+            status = f"**EXPIRED** ({abs(days_left)} days ago)"
+        elif days_left == 0:
+            status = "**EXPIRES TODAY**"
+        else:
+            status = f"in *{days_left} days*"
+        lines.append(f"• {domain} — expires {exp_date}  ({status})")
+
+    message = "\n".join(lines)
+
+    headers = {
+        'Authorization': f'Bearer {slack_token}',
+        'Content-Type': 'application/json'
+    }
+    payload = {
+        "channel": slack_channel,
+        "text": message
+    }
+    try:
+        resp = requests.post("https://slack.com/api/chat.postMessage", headers=headers, json=payload)
+        if not resp.json().get("ok"):
+            print("Failed to send expiration warning to Slack:", resp.json())
+    except Exception as e:
+        print("Error sending expiration warning:", e)
 
 # Report generation
-def generate_html_report(mapping_by_domain, unique_domains, total_a_records, matched_server_ips):
+def generate_html_report(mapping_by_domain, unique_domains, total_a_records, matched_server_ips, ip_to_server):
     total_servers = len(matched_server_ips)
-    total_spending = sum(ip_to_server['price_monthly'] for ip, ip_to_server in mapping_by_domain.items() if ip in matched_server_ips)
+    total_spending = sum(ip_to_server[ip]['price_monthly'] for ip in matched_server_ips if ip in ip_to_server)
 
     html = f"""
     <html>
@@ -135,6 +232,8 @@ def generate_html_report(mapping_by_domain, unique_domains, total_a_records, mat
             th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
             th {{ background-color: #f2f2f2; }}
             .no-match {{ background-color: #ffcccc; }}
+            .domain-header {{ margin-top: 40px; }}
+            .expiry {{ color: #555; font-size: 0.95em; }}
         </style>
     </head>
     <body>
@@ -147,11 +246,19 @@ def generate_html_report(mapping_by_domain, unique_domains, total_a_records, mat
         <tr><td>Total Monthly Spending (€)</td><td>{total_spending:.2f}</td></tr>
     </table>
     <p>Note: 'No match' indicates that the IP address does not correspond to any server in the provided Hetzner projects.</p>
+    <p>Expiration dates are fetched from WHOIS (may be rate-limited or unavailable for some TLDs).</p>
     """
 
     for domain in sorted(mapping_by_domain.keys()):
+        expiry_date = get_domain_expiry(domain)
         num_records = len(mapping_by_domain[domain])
-        html += f"<h2>Domain: {domain} ({num_records} A records)</h2>"
+        html += f"""
+        <h2 class="domain-header">
+            Domain: {domain}
+            <span class="expiry">(expires: {expiry_date})</span>
+        </h2>
+        <p>({num_records} A records)</p>
+        """
         html += """
         <table>
         <tr>
@@ -404,7 +511,7 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
             labels=mapping_item['labels']
         ).set(1)
 
-    return mapping_by_domain, unique_domains, total_a_records, matched_server_ips, unmatched_ips
+    return mapping_by_domain, unique_domains, total_a_records, matched_server_ips, unmatched_ips, ip_to_server
 
 # Slack integration functions
 def send_message_to_slack(token, channel_id, text):
@@ -492,31 +599,35 @@ def main():
         hetzner_projects = get_hetzner_projects()
         pushgateway_url = get_pushgateway_url()
 
-        mapping_by_domain, unique_domains, total_a_records, matched_server_ips, unmatched_ips = process_servers_and_domains(
+        mapping_by_domain, unique_domains, total_a_records, matched_server_ips, unmatched_ips, ip_to_server = process_servers_and_domains(
             cloudflare_token, hetzner_projects, metrics
         )
 
-        html = generate_html_report(mapping_by_domain, unique_domains, total_a_records, matched_server_ips)
+        html = generate_html_report(mapping_by_domain, unique_domains, total_a_records, matched_server_ips, ip_to_server)
         pdf_file = save_report(html, datetime.now().strftime("%Y%m%d_%H%M%S"))
 
-        # slack_bot_token = os.environ.get("SLACK_BOT_TOKEN")
-        # slack_channel_id = os.environ.get("SLACK_CHANNEL_ID")
-        # if slack_bot_token and slack_channel_id:
-        #     try:
-        #         initial_comment = "CloudMesh Weekly Report - Server and Cloudflare monitoring (PDF)"
-        #         upload_result = upload_to_slack(pdf_file, slack_bot_token, slack_channel_id, initial_comment)
-        #         if upload_result.get("ok"):
-        #             print("PDF report uploaded to Slack successfully.")
-        #             file_name = os.path.basename(pdf_file)
-        #             send_message_to_slack(
-        #                 slack_bot_token,
-        #                 slack_channel_id,
-        #                 f"CloudMesh Weekly Report (PDF) uploaded: {file_name}"
-        #             )
-        #         else:
-        #             print(f"Slack upload returned an error: {upload_result.get('error')}")
-        #     except Exception as e:
-        #         print(f"Error uploading to Slack: {e}")
+        slack_bot_token = os.environ.get("SLACK_BOT_TOKEN")
+        slack_channel_id = os.environ.get("SLACK_CHANNEL_ID")
+        if slack_bot_token and slack_channel_id:
+            try:
+                initial_comment = "CloudMesh Weekly Report - Server and Cloudflare monitoring (PDF)"
+                upload_result = upload_to_slack(pdf_file, slack_bot_token, slack_channel_id, initial_comment)
+                if upload_result.get("ok"):
+                    print("PDF report uploaded to Slack successfully.")
+                    file_name = os.path.basename(pdf_file)
+                    send_message_to_slack(
+                        slack_bot_token,
+                        slack_channel_id,
+                        f"CloudMesh Weekly Report (PDF) uploaded: {file_name}"
+                    )
+
+                # ────────────────────────────────
+                # NEW: Check & notify about soon-to-expire domains
+                # ────────────────────────────────
+                send_expiring_domains_warning(unique_domains, slack_bot_token, slack_channel_id)
+
+            except Exception as e:
+                print(f"Error uploading to Slack / sending warning: {e}")
 
         metrics['domains'].set(len(unique_domains))
         metrics['a_records'].set(total_a_records)

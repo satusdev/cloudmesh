@@ -1,15 +1,21 @@
 # CloudMesh Monitoring Setup
 
-## Final Configuration (Simplified & Working)
+> **Note:** This document has been integrated into our comprehensive documentation structure. For the most up-to-date monitoring setup information, please see:
+> - [Deployment Guide - Monitoring Section](docs/DEPLOYMENT.md#monitoring-and-dashboard)
+> - [Configuration Guide - Prometheus Integration](docs/CONFIGURATION.md#monitoring-integration)
+> - [Troubleshooting Guide - Prometheus Issues](docs/TROUBLESHOOTING.md#5-prometheus-integration-issues)
+
+## Quick Reference
 
 ### Port Mappings
 - **Grafana**: http://localhost:9911 (admin/admin)
 - **Prometheus**: http://localhost:9912
 - **Pushgateway**: http://localhost:9913
 
-### Services Running
+### Services Status Check
 ```bash
 docker ps
+# Should show:
 # prometheus:9912:9090
 # pushgateway:9913:9091
 # grafana:9911:3000
@@ -17,17 +23,50 @@ docker ps
 
 ### Script Execution
 ```bash
-PUSHGATEWAY_URL=http://localhost:9913 python3 script_enhanced.py
+# With current monitoring setup
+PUSHGATEWAY_URL=http://localhost:9913 python script.py
+
+# Or use docker-compose
+docker-compose up
 ```
 
 ### Data Flow
 ✅ **Script** → **Pushgateway** (port 9913) → **Prometheus** (internal) → **Grafana** (port 9911)
 
-### Key Files
-- `docker-compose.yml` - Container definitions
-- `prometheus.yml` - Prometheus scraping config
-- `script_enhanced.py` - Main monitoring script
-- `grafana-dashboard-enhanced.json` - Grafana dashboard
+### Key Configuration Files
+- `docker-compose.yml` - Container definitions and networking
+- `prometheus.yml` - Prometheus scraping configuration
+- `script.py` - Main CloudMesh script with Prometheus integration
+- `grafana-dashboard.json` - Grafana dashboard configuration
+
+### Common Commands
+
+**Start all services:**
+```bash
+docker-compose up -d
+```
+
+**Check service health:**
+```bash
+curl http://localhost:9912/targets  # Prometheus targets
+curl http://localhost:9913/metrics   # Pushgateway metrics
+```
+
+**Stop all services:**
+```bash
+docker-compose down
+```
+
+**View logs:**
+```bash
+docker-compose logs -f prometheus
+docker-compose logs -f grafana
+docker-compose logs -f pushgateway
+```
+
+---
+
+**For detailed setup instructions, configuration options, and troubleshooting, please refer to the documentation in the `docs/` directory.**
 
 ### Verification Commands
 ```bash
