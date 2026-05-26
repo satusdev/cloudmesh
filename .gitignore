@@ -1,6 +1,7 @@
 config.json
-reports/
-venv/
+/reports/
+/venv/
+
 
 # Dependencies
 /node_modules
