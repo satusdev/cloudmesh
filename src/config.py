@@ -74,3 +74,14 @@ def get_max_snapshots():
             pass
     config = load_config_json()
     return int(config.get('monitoring', {}).get('max_snapshots', 10))
+
+def get_dashboard_password_hash():
+    import hashlib
+    password = os.environ.get('DASHBOARD_PASSWORD')
+    if not password:
+        config = load_config_json()
+        password = config.get('dashboard', {}).get('password')
+    if password:
+        return hashlib.sha256(password.encode('utf-8')).hexdigest()
+    return None
+
