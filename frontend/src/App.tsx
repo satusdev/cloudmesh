@@ -122,11 +122,14 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null;
     if (savedTheme) {
-      document.documentElement.classList.toggle('light-theme', savedTheme === 'light');
+      document.documentElement.classList.toggle('dark', savedTheme === 'dark');
       return savedTheme;
     }
+    // Default is dark mode
+    document.documentElement.classList.add('dark');
     return 'dark';
   });
+
   const [refreshing, setRefreshing] = useState(false);
 
   // Authentication State
@@ -289,8 +292,9 @@ export default function App() {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(nextTheme);
     localStorage.setItem('theme', nextTheme);
-    document.documentElement.classList.toggle('light-theme', nextTheme === 'light');
+    document.documentElement.classList.toggle('dark', nextTheme === 'dark');
   };
+
 
   const fetchData = async () => {
     try {
