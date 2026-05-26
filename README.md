@@ -1,270 +1,156 @@
 <div align="center">
   <h1>CloudMesh 🚀</h1>
-  <p>A Python tool that maps Cloudflare domains and subdomains to Hetzner Cloud servers across multiple projects.</p>
+  <p>Production-grade infrastructure auditor linking Cloudflare DNS records to Hetzner Cloud virtual servers.</p>
   <img src="https://img.icons8.com/fluency/96/000000/server.png" alt="logo"/>
 </div>
 
 <div align="center">
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/satusdev/cloudmesh/lint.yml?branch=main)](https://github.com/satusdev/cloudmesh/actions)
-[![npm version](https://img.shields.io/npm/v/starter-template.svg)](https://www.npmjs.com/package/starter-template)
 [![License](https://img.shields.io/npm/l/starter-template.svg)](https://opensource.org/licenses/MIT)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white)](https://conventionalcommits.org)
 [![Release Please](https://img.shields.io/badge/release-please-blue.svg)](https://github.com/googleapis/release-please)
 
 </div>
 
-## Overview ⏩️
+---
 
-CloudMesh is a Python tool that maps Cloudflare domains and subdomains to Hetzner Cloud servers across multiple projects. It fetches data from the Cloudflare and Hetzner APIs, matches domains to servers by IP addresses, and generates detailed HTML and PDF reports. This tool is ideal for infrastructure management, helping you track and clean up your cloud resources by providing a clear overview of your domain-to-server relationships.
+## 1. System Overview
 
-## Table of Contents 📄
+CloudMesh is a production-grade infrastructure auditing tool that matches active Cloudflare DNS A records to Hetzner Cloud virtual servers by resolving and matching public IP addresses. It identifies orphaned DNS records (subdomains pointing to missing servers), aggregates monthly cloud costs per project, checks domain expiration dates, pushes telemetry to a Prometheus/Pushgateway stack, and provides a modern, interactive React/Vite dashboard.
 
-- [Overview ⏩️](#overview-️)
-- [Core Features ✨](#core-features-)
-- [Getting Started ☣️](#getting-started-️)
-- [Contributing](#contributing)
-- [Future Enhancements 🔮](#future-enhancements-)
-- [Getting Help 🆘](#getting-help-)
-- [License](#license)
+---
 
-## Core Features ✨
+## 2. Core Features
 
-- **Comprehensive Mapping:** Links Cloudflare A records (domains and subdomains) to Hetzner servers, showing project, server name, IP, status, creation date, server type, monthly price, traffic usage, and labels.
-- **Domain-Specific Tables:** Organizes data into separate tables for each domain, with subdomains sorted alphabetically.
-- **Visual Clarity:** Highlights unmatched IPs (where no Hetzner server is found) in red for easy identification.
-- **Summary Statistics:** Displays total domains, A records, matched servers, and total monthly spending (€) at the top of the report.
-- **Dual Output Formats:** Generates both an HTML report (`reports/mapping.html`) for browser viewing and a timestamped PDF report (e.g., `reports/mapping_YYYYMMDD_HHMMSS.pdf`) for archiving or sharing.
-- **Prometheus & Grafana Monitoring:** Pushes metrics to Prometheus Pushgateway for visualization in Grafana dashboards.
-- **.env Support:** Loads configuration from a `.env` file automatically (using `python-dotenv`), with fallback to `config.json` if needed.
-- **Slack Integration (New!):** Automatically uploads the PDF report to a Slack channel using the latest Slack external file upload API (see below).
-- **Robust Error Handling:** Clear error messages for missing configuration, API issues, and Slack upload problems.
-- **Extensible Design:** Built to support future enhancements like monitoring and automation.
+- **Extended Resource Mapping**: Integrates and maps Cloudflare DNS zones (supporting both `A` and `AAAA` records) to multiple Hetzner Cloud resource types, including Virtual Servers, Load Balancers, and Floating IPs.
+- **Network Security Port Audit**: Concurrently scans ports `22` (SSH), `80` (HTTP), `443` (HTTPS), and `3389` (RDP) on all resolved IPs using a high-performance multi-threaded socket verification pool.
+- **Stale VM & Cost Optimization Engine**: Detects financial waste and potential subdomain takeovers by recommending removal of dangling DNS entries and idle/unmapped Hetzner resources.
+- **Interactive SVG Topology Graph**: Renders a dynamic node connection map (Domain -> Cloudflare Record -> Public IP -> Hetzner Resource -> Project) showing orphaned nodes in crimson, clickable resource nodes, and cost-weighted projects.
+- **Drift & Historical Diff Engine**: Computes modifications (added, removed, or changed records/resources) compared to prior audit runs, with a client-side selector for arbitrary historical snapshot comparison.
+- **DNS & HTTP Latency Telemetry**: Measures DNS resolution speed and TCP connection latency asynchronously for all subdomains.
+- **Scheduled Monitor (Daemon Mode)**: Runs continuously inside containers or servers at a configurable interval (`MONITORING_INTERVAL_SECS`) to automate ongoing scans.
+- **Advanced Filtering**: Filters records on the fly by Cloudflare proxy states, DNS type (A/AAAA), wildcard formats, cost ranges, projects, and domain expiration health.
+- **Disk-Persistent WHOIS Cache**: Automatically caches domain registration lookups in `reports/whois_cache.json` to prevent rate-limit blocks and speed up execution.
+- **API Robustness & Retries**: Utilizes a customized connection pool configured with a 5-retry policy and exponential backoff to handle transient errors (`429`, `500`, `502`, `503`, `504`).
+- **Label Sanitization (Data Safety)**: Masks sensitive metadata keys (e.g., `key`, `token`, `secret`, `auth`, `password`) in VM labels as `********` before exporting reports.
+- **Multi-Channel Alerting**: Dispatches summary metrics and domain expiration warnings to Slack channels (supporting PDF uploads) and Google Chat webhook cards.
+- **Prometheus Telemetry**: Pushes metrics (running counts, processing durations, domain mappings, server uptimes) to Prometheus Pushgateway.
+
+---
+
+## 3. Directory Structure
+
+```
+├── docs/                     # Detailed guides (Deployment, Configuration, Troubleshooting)
+├── frontend/                 # React / Vite TypeScript dashboard application
+│   ├── src/                  # React dashboard component codebase
+│   └── public/               # Static assets & generated data.json source
+├── reports/                  # Generated HTML, PDF, and JSON audit artifacts (gitignored)
+├── src/                      # Modular Python package engine
+│   ├── api/                  # Cloudflare and Hetzner API client components
+│   ├── core/                 # Matcher calculations and persistent cache adapters
+│   ├── notifications/        # Slack and Google Chat webhook integrations
+│   ├── reports/              # Print HTML and JSON file writers
+│   ├── config.py             # Configuration validation and environment loader
+│   ├── metrics.py            # Prometheus metric registry declarations
+│   └── main.py               # Orchestrator flow
+├── docker-compose.yml        # Telemetry containers (Prometheus & Pushgateway)
+├── prometheus.yml            # Prometheus scrape targets configuration
+├── script.py                 # Thin backward-compatible script wrapper
+└── PROJECT.md                # System specification and architecture design doc
+```
+
+---
+
+## 4. Getting Started
 
 ### Prerequisites
-
-- **Python 3.6+:** Ensure Python is installed (`python3 --version`).
-- **Dependencies:**
-  - Python packages: `requests`, `pdfkit`, `prometheus_client` (`pip install requests pdfkit prometheus_client`).
-  - System tool: `wkhtmltopdf` for PDF generation.
-    - Ubuntu/Debian: `sudo apt-get install wkhtmltopdf`
-    - macOS: `brew install wkhtmltopdf`
-    - Windows: Download from [wkhtmltopdf.org](https://wkhtmltopdf.org) and add to PATH.
-- **API Tokens:**
-  - Cloudflare: Create a token with `Zone:Read` and `DNS:Read` permissions for all zones (Cloudflare Dashboard).
-  - Hetzner: Generate a Read & Write token for each project (Hetzner Cloud Console).
-
-### Setup
-
-#### 1. Install Python Dependencies
-
-- Create and activate a virtual environment (recommended):
-  ```bash
-  python3 -m venv venv
-  source venv/bin/activate  # On Windows: venv\Scripts\activate
-  ```
-- Install required Python packages:
-  ```bash
-  pip install requests pdfkit prometheus_client dotenv python-whois
-  ```
-- Install wkhtmltopdf:
-  - Ubuntu/Debian: `sudo apt-get install wkhtmltopdf`
+- **Python 3.8+**
+- **NodeJS 18+ & pnpm**
+- **wkhtmltopdf** (optional, required to export PDF reports)
+  - Ubuntu/Debian: `sudo apt-get update && sudo apt-get install wkhtmltopdf`
   - macOS: `brew install wkhtmltopdf`
-  - Windows: Download from [wkhtmltopdf.org](https://wkhtmltopdf.org/downloads.html) and add to PATH
+  - Windows: Download from [wkhtmltopdf.org](https://wkhtmltopdf.org) and add to system PATH.
 
-#### 2. Install and Run Prometheus, Pushgateway, and Grafana
-
-**Option A: Docker (Recommended)**
-
-> **Note:** When running Prometheus and Pushgateway in Docker, `localhost` does not work between containers. Use a user-defined Docker network and container names for connectivity.
-
+### 1. Setup Python Environment
+Create a virtual environment and install engine dependencies:
 ```bash
-docker-compose up -d
+# Create and activate environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+# Or manually:
+pip install requests pdfkit prometheus_client python-dotenv python-whois
 ```
 
-Update your `prometheus.yml` to use the Pushgateway container name:
+### 2. Configure Credentials
+Copy `.env.example` to `.env` and fill in API credentials and daemon configurations:
+```bash
+CLOUDFLARE_TOKEN=your_cloudflare_api_token
+HETZNER_TOKEN_1=your_hetzner_project_api_token
+HETZNER_PROJECT_NAME_1=Hetzner_Project_Name_1
+PUSHGATEWAY_URL=http://localhost:9913
 
-```yaml
-scrape_configs:
-  - job_name: 'cloudmesh_pushgateway'
-    static_configs:
-      - targets: ['pushgateway:9091']
-```
-
-**Option B: Manual Installation**
-- [Prometheus Download](https://prometheus.io/download/)
-- [Pushgateway Download](https://prometheus.io/docs/prometheus/latest/getting_started/#pushgateway)
-- [Grafana Download](https://grafana.com/grafana/download)
-
-#### 3. Configure CloudMesh
-
-- Set the following environment variables (in your shell, .env file, or CI/CD secrets):
-
-  - `CLOUDFLARE_TOKEN`: Cloudflare API token with `Zone:Read` and `DNS:Read` permissions.
-  - `HETZNER_TOKEN_1`, `HETZNER_PROJECT_NAME_1`: Hetzner API token and project name for each project (add more as needed: `HETZNER_TOKEN_2`, etc.).
-  - `PUSHGATEWAY_URL`: URL of your Prometheus Pushgateway (e.g., `http://pushgateway:9091` or `http://localhost:9091`).
-
-  Example `.env` file:
-  ```
-  CLOUDFLARE_TOKEN=your_cloudflare_token
-  HETZNER_TOKEN_1=your_hetzner_token
-  HETZNER_PROJECT_NAME_1=your_project_name
-  PUSHGATEWAY_URL=http://pushgateway:9091
-  ```
-
-  If running in CI/CD, set these as repository secrets.
-
----
-
-## Slack Integration 🚀
-
-CloudMesh can automatically upload the generated PDF report to a Slack channel using the latest Slack external file upload API.
-
-### Setup
-
-1. **Create a Slack App** at https://api.slack.com/apps (choose "From scratch").
-2. **Add Bot Token Scopes** in "OAuth & Permissions":
-   - `chat:write` (Send messages as your bot)
-   - `files:write` (Upload, edit, and delete files as your bot)
-   - `incoming-webhook` (optional, for posting messages)
-3. **Install the app to your workspace** and copy the **Bot User OAuth Token** (starts with `xoxb-...`).
-4. **Invite the bot to your target channel** (including private channels) with `/invite @your-bot-name`.
-5. **Add these to your `.env` file:**
-   ```
-   SLACK_BOT_TOKEN=xoxb-your-bot-token
-   SLACK_CHANNEL_ID=your-channel-id
-   ```
-   - To get the channel ID: In Slack, right-click the channel and select "Copy Channel ID".
-
-### How it Works
-
-- The script uses Slack's `files.getUploadURLExternal` and `files.completeUploadExternal` APIs to upload the PDF.
-- The file is uploaded and shared directly in the specified channel.
-- If the bot is not a member of the channel, or if the channel ID is incorrect, the upload will silently fail or not appear.
-
-### Troubleshooting
-
-- **File not visible in channel:** Ensure the bot is invited to the channel and the channel ID is correct.
-- **Permissions error:** Double-check that your bot has the required scopes.
-- **API errors:** The script prints detailed error messages for Slack API failures.
-- **Scopes required:**
-  - `chat:write`
-  - `files:write`
-  - `incoming-webhook` (optional)
-
-### Example `.env` for Slack
-
-```
-CLOUDFLARE_TOKEN=your_cloudflare_token
-HETZNER_TOKEN_1=your_hetzner_token
-HETZNER_PROJECT_NAME_1=your_project_name
-PUSHGATEWAY_URL=http://pushgateway:9091
-SLACK_BOT_TOKEN=xoxb-your-bot-token
-SLACK_CHANNEL_ID=your-channel-id
+# (Optional) Scheduled Daemon Mode Configuration
+MONITORING_INTERVAL_SECS=300       # Run audits every 5 minutes (set to 0 or omit to run once)
+MAX_HISTORICAL_SNAPSHOTS=10        # Maximum history snapshots to persist for diffs and sparklines
 ```
 
 ---
 
-### Docker Networking Troubleshooting
+## 5. Execution & Usage
 
-- If Prometheus cannot connect to Pushgateway, ensure both containers are on the same Docker network and use the container name (not `localhost`) in `prometheus.yml`.
-- Restart Prometheus after any configuration changes.
-- To check connectivity, you can run a shell in the Prometheus container and ping the Pushgateway:
-  ```bash
-  docker exec -it prometheus sh
-  ping pushgateway
-  ```
-- If you run your script outside Docker, use `localhost:9091` for Pushgateway in `config.json`. If inside Docker, use `pushgateway:9091`.
+### Step 1: Run the Audit Engine
+Execute the Python script to fetch, map, and export the infrastructure mapping reports:
+```bash
+python script.py
+```
+This script validates credentials, computes mappings, and outputs:
+- `reports/mapping.html`: Static printable report.
+- `reports/data.json` & `frontend/public/data.json`: Raw structured audit data.
+- `reports/whois_cache.json`: Persistent WHOIS queries.
+- `reports/mapping_YYYYMMDD_HHMMSS.pdf`: Archived PDF report.
 
-### Monitoring and Dashboard Access
+### Step 2: Launch the React Dashboard
+Run the frontend dev server to visualize findings interactively:
+```bash
+# Navigate to frontend and install dependencies
+cd frontend
+pnpm install
 
-#### A. Accessing Prometheus
+# Start local server
+pnpm dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser. The dashboard automatically syncs with `frontend/public/data.json` on page refresh or load.
 
-- Once Prometheus is running, open [http://localhost:9090](http://localhost:9090) in your browser.
-- Use the "Status" → "Targets" menu to verify that the Pushgateway is listed and metrics are being scraped.
-- You can query metrics directly from the Prometheus web UI.
+---
 
-#### B. Accessing Grafana
+## 6. Telemetry Stack (Prometheus)
 
-- Once Grafana is running, open [http://localhost:3000](http://localhost:3000) in your browser.
-- **Default login:**  
-  - Username: `admin`  
-  - Password: `admin` (you will be prompted to change this on first login)
-- After login:
-  1. Go to "Configuration" → "Data Sources" → "Add data source".
-  2. Select "Prometheus" and set the URL to `http://prometheus:9090`.
-  3. Save & Test the data source.
-  4. Go to "Dashboards" → "Import" and upload `grafana-dashboard.json` from the repo.
-  5. Open the imported dashboard to view CloudMesh metrics.
+To collect execution metrics, spin up the telemetry containers:
+```bash
+# Start Prometheus and Pushgateway
+docker compose up -d
 
-- **Security Note:** Change the Grafana admin password after your first login.
+# Verify services
+# Prometheus target page: http://localhost:9912
+# Pushgateway metrics: http://localhost:9913
+```
 
-#### C. Running the Script and Workflow
+---
 
-- Ensure the required environment variables are set as described above.
-- Run the script:
-  ```bash
-  python script.py
-  ```
-- The script will:
-  - Generate HTML and PDF reports in the `reports/` directory.
-  - Push monitoring metrics (run count, duration, domains, records, errors, etc.) to the Prometheus Pushgateway.
+## 7. Contributing
 
-#### D. How It All Works Together
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/name`).
+3. Commit changes using standard Conventional Commit guidelines.
+4. Submit a Pull Request.
 
-1. `script.py` runs and pushes metrics to the Pushgateway.
-2. Prometheus scrapes the Pushgateway and stores metrics.
-3. Grafana visualizes these metrics using the provided dashboard.
+---
 
-#### E. Example Workflow
-
-1. Start Prometheus, Pushgateway, and Grafana (see above).
-2. Run `python script.py` to generate reports and metrics.
-3. Open Prometheus ([http://localhost:9090](http://localhost:9090)) to verify metrics.
-4. Open Grafana ([http://localhost:3000](http://localhost:3000)), add Prometheus as a data source, and import the dashboard.
-5. View real-time metrics and visualizations in Grafana.
-
-
-### Usage
-
-- **Run the Script:**
-  ```bash
-  python script.py
-  ```
-  This generates:
-  - `reports/mapping.html`: An HTML report viewable in any web browser.
-  - `reports/mapping_YYYYMMDD_HHMMSS.pdf`: A timestamped PDF report for archiving or sharing.
-
-- **View the Reports:**
-  - **HTML:** Open `reports/mapping.html` in a browser (e.g., `open reports/mapping.html` on macOS, `xdg-open reports/mapping.html` on Linux, or `start reports/mapping.html` on Windows).
-  - **PDF:** Open the latest PDF file in `reports/` using a PDF viewer.
-
-- **Report Details:**
-  - **Summary Table:** Shows total domains, A records, matched servers, and monthly spending.
-  - **Domain Tables:** Each domain has its own table listing subdomains, IPs, projects, server names, status, creation dates, server types, prices, traffic, and labels.
-  - **Unmatched IPs:** Highlighted in red for easy identification.
-
-## Contributing
-
-Contributions are welcome! If you have an improvement or a new feature, please follow these steps:
-
-1.  **Fork the repository.**
-2.  **Create a new branch** for your feature or fix.
-3.  **Add your changes** and commit them with a conventional commit message.
-4.  **Submit a pull request** with a clear description of your changes.
-
-## ✨ Contributors
-
-<a href="https://github.com/satusdev/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=satusdev/.github&repo=satusdev/cloudmesh" />
-</a>
-
-Made with [contrib.rocks](https://contrib.rocks).
-
-## Getting Help 🆘
-
-If you encounter any issues or have questions, please [open an issue](https://github.com/satusdev/cloudmesh/issues) on the GitHub repository.
-
-## License
+## 8. License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

@@ -19,6 +19,12 @@ CloudMesh aims to be the comprehensive infrastructure monitoring and reporting s
 - [x] Comprehensive documentation
 - [x] Security best practices
 - [x] Performance optimization
+- [x] Decoupled modular Python package engine (`/src` folder)
+- [x] Standalone glassmorphic Vite + React dashboard (`/frontend` folder)
+- [x] Disk-persistent WHOIS cache integration
+- [x] Exponential backoff HTTP retry adapters for API clients
+- [x] Automatic VM label metadata sanitization policies
+
 
 ## Short-term Goals (Next 3 Months)
 
