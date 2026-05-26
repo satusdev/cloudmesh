@@ -16,8 +16,11 @@ import {
   ArrowRight, 
   TrendingUp, 
   SlidersHorizontal, 
-  CloudLightning
+  CloudLightning,
+  Lock,
+  Unlock
 } from 'lucide-react';
+
 
 interface MappingItem {
   subdomain: string;
@@ -108,7 +111,9 @@ interface AuditData {
   recommendations?: Recommendation[];
   port_audit_results?: Record<string, Record<string, boolean>>;
   snapshots_list?: SnapshotFile[];
+  passcode_hash?: string | null;
 }
+
 
 export default function App() {
   const [data, setData] = useState<AuditData | null>(null);
@@ -123,6 +128,42 @@ export default function App() {
     return 'dark';
   });
   const [refreshing, setRefreshing] = useState(false);
+
+  // Authentication State
+  const [passcode, setPasscode] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return sessionStorage.getItem('cloudmesh_authenticated') === 'true';
+  });
+  const [passcodeError, setPasscodeError] = useState('');
+
+  const hashPasscode = async (str: string) => {
+    const utf8 = new Uint8Array(Array.from(str).map(c => c.charCodeAt(0)));
+    const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+  };
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasscodeError('');
+    if (!data || !data.passcode_hash) return;
+    
+    const hash = await hashPasscode(passcode);
+    if (hash === data.passcode_hash) {
+      setIsAuthenticated(true);
+      sessionStorage.setItem('cloudmesh_authenticated', 'true');
+    } else {
+      setPasscodeError('Incorrect passcode. Access denied.');
+    }
+  };
+
+  const handleLock = () => {
+    setIsAuthenticated(false);
+    sessionStorage.removeItem('cloudmesh_authenticated');
+    setPasscode('');
+  };
+
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -560,6 +601,59 @@ export default function App() {
     );
   }
 
+  if (data.passcode_hash && !isAuthenticated) {
+    return (
+      <div className={`min-h-screen transition-colors duration-250 flex flex-col items-center justify-center p-4 ${theme === 'dark' ? 'bg-[#030712] text-slate-100' : 'bg-[#f8fafc] text-slate-950'}`}>
+        <div className="absolute top-4 right-4 flex items-center gap-2">
+          <button 
+            onClick={toggleTheme}
+            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-xl transition duration-200 cursor-pointer"
+            title="Toggle Theme"
+          >
+            {theme === 'dark' ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5 text-slate-800" />}
+          </button>
+        </div>
+        
+        <div className="max-w-md w-full bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-850 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center space-y-6">
+          <div className="bg-indigo-600/10 p-4 rounded-full border border-indigo-500/20 text-indigo-500">
+            <Lock className="h-10 w-10" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black tracking-tight">CloudMesh Auditor</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-semibold uppercase tracking-wider text-rose-500 tracking-widest font-mono">Restricted Access</p>
+          </div>
+          <form onSubmit={handleUnlock} className="w-full space-y-4">
+            <div className="relative">
+              <input
+                type="password"
+                value={passcode}
+                onChange={(e) => {
+                  setPasscode(e.target.value);
+                  setPasscodeError('');
+                }}
+                placeholder="Enter dashboard passcode..."
+                className="w-full bg-slate-100/50 dark:bg-slate-950/50 border border-slate-250 dark:border-slate-800/80 rounded-xl py-3.5 px-4 text-center text-sm font-semibold tracking-wide placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition duration-200"
+              />
+            </div>
+            {passcodeError && (
+              <p className="text-xs font-semibold text-rose-500 animate-pulse">{passcodeError}</p>
+            )}
+            <button
+              type="submit"
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-3.5 font-bold text-sm transition duration-200 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/10 cursor-pointer"
+            >
+              <Unlock className="h-4 w-4" />
+              Unlock Dashboard
+            </button>
+          </form>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">
+            Protected by CloudMesh environment configuration passcode.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen transition-colors duration-250 ${theme === 'dark' ? 'bg-[#030712] text-slate-100' : 'bg-[#f8fafc] text-slate-950'}`}>
       
@@ -591,9 +685,18 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-2">
+              {data.passcode_hash && (
+                <button 
+                  onClick={handleLock}
+                  className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-rose-500 p-2 rounded-xl transition duration-200 cursor-pointer"
+                  title="Lock Dashboard"
+                >
+                  <Lock className="h-5 w-5" />
+                </button>
+              )}
               <button 
                 onClick={toggleTheme}
-                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-xl transition duration-200"
+                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-xl transition duration-200 cursor-pointer"
                 title="Toggle Theme"
               >
                 {theme === 'dark' ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5 text-slate-800" />}
@@ -601,12 +704,13 @@ export default function App() {
               <button 
                 onClick={handleRefresh}
                 disabled={refreshing}
-                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-xl transition duration-200 disabled:opacity-50"
+                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-xl transition duration-200 disabled:opacity-50 cursor-pointer"
                 title="Refresh mapping data"
               >
                 <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
             </div>
+
           </div>
         </header>
 
@@ -1189,47 +1293,7 @@ export default function App() {
             {/* Right Column: Sidebar Panels */}
             <div className="space-y-6">
               
-              {/* Cost Savings & Optimization Advisor Panel */}
-              {data.recommendations && data.recommendations.length > 0 && (
-                <div className="bg-emerald-500/5 border border-emerald-500/25 rounded-2xl p-5 shadow-sm">
-                  <h2 className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2 mb-2">
-                    <DollarSign className="h-5 w-5" />
-                    Optimization Advisor
-                  </h2>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                    Potential Savings: <span className="font-extrabold text-emerald-500 text-sm">€{
-                      data.recommendations.reduce((sum, r) => sum + r.cost_impact, 0).toFixed(2)
-                    }/mo</span>
-                  </div>
-                  <div className="space-y-3">
-                    {data.recommendations.map((rec, idx) => {
-                      const badgeColor = rec.severity === 'high' 
-                        ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' 
-                        : rec.severity === 'medium' 
-                        ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
-                        : 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20';
-                      
-                      return (
-                        <div key={idx} className="bg-slate-100/50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-xl text-xs space-y-1.5">
-                          <div className="flex justify-between items-center">
-                            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase ${badgeColor}`}>
-                              {rec.severity} impact
-                            </span>
-                            {rec.cost_impact > 0 && (
-                              <span className="font-bold text-emerald-500">
-                                -€{rec.cost_impact.toFixed(2)}/mo
-                              </span>
-                            )}
-                          </div>
-                          <p className="font-bold text-slate-700 dark:text-slate-200">{rec.resource_name}</p>
-                          <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">{rec.description}</p>
-                          <p className="text-indigo-500 dark:text-indigo-400 text-[11px] font-semibold">→ {rec.suggestion}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+
 
               {/* Snapshot Comparer panel */}
               {data.snapshots_list && data.snapshots_list.length > 0 && (
