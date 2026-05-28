@@ -65,6 +65,34 @@ CloudMesh is a production-grade infrastructure auditing tool that matches active
 
 ## 4. Getting Started
 
+### Quick Start (Linux Deployment)
+For a rapid setup and run on a Linux server (e.g., target directory `/home/cloudmesh`), execute the following:
+```bash
+cd /home/cloudmesh
+
+# 1. Stop old services
+docker compose down --remove-orphans || true
+
+# 2. Set up virtualenv (only needed once)
+python3 -m venv venv
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install -r requirements.txt
+
+# 3. Configure credentials (only needed once)
+cp .env.example .env
+nano .env        # Fill in CLOUDFLARE_TOKEN, HETZNER_TOKEN_1, etc.
+
+# 4. Create output directories
+mkdir -p reports/snapshots
+mkdir -p frontend/dist/snapshots
+
+# 5. Start infrastructure
+docker compose up -d
+
+# 6. Run the audit
+./venv/bin/python script.py
+```
+
 ### Prerequisites
 - **Python 3.8+**
 - **NodeJS 18+ & pnpm**
