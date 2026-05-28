@@ -1,2 +1,130 @@
-"# ==============================================================================\n# CloudMesh Production Deployment Script\n# ==============================================================================\n# Strategy: tar bundle locally -> single scp upload -> extract and run on server\n# This avoids rsync protocol issues and ensures consistent file delivery.\n# ==============================================================================\n\n$ErrorActionPreference = \"Stop\"\n\n# Target Server Configuration\n$TargetIP   = \"49.13.65.81\"\n$TargetUser = \"root\"\n$TargetDir  = \"/home/cloudmesh\"\n$Remote     = \"${TargetUser}@${TargetIP}\"\n$Archive    = \"cloudmesh-deploy.tar.gz\"\n\nWrite-Host \"==================================================\" -ForegroundColor Green\nWrite-Host \"Deploying CloudMesh to ${TargetIP}\" -ForegroundColor Green\nWrite-Host \"==================================================\" -ForegroundColor Green\n\n# ---------------------------------------------------------------------------\n# Step 1: Build React Frontend Locally\n# ---------------------------------------------------------------------------\nWrite-Host \"[1/4] Building React frontend...\" -ForegroundColor Cyan\n\nif (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {\n    Write-Error \"pnpm is not installed. Run: npm install -g pnpm\"\n    exit 1\n}\n\nSet-Location frontend\npnpm install\npnpm build\nSet-Location ..\n\n# ---------------------------------------------------------------------------\n# Step 2: Bundle into a single tar archive (Unix-style via ssh tar pipe or\n#         via native Windows tar which ships with Win10+)\n# ---------------------------------------------------------------------------\nWrite-Host \"[2/4] Creating deployment archive ${Archive}...\" -ForegroundColor Cyan\n\n# Remove old archive if it exists\nif (Test-Path $Archive) { Remove-Item $Archive }\n\n# Windows 10+ ships with BSD tar. Exclude files that should not be deployed.\ntar -czf $Archive `\n    --exclude=\".git\" `\n    --exclude=\"
-<truncated 3349 bytes>
+# ==============================================================================
+# CloudMesh Production Deployment Script (PowerShell)
+# ==============================================================================
+# Strategy: tar bundle locally -> single scp upload -> extract and run on server
+# This avoids rsync protocol issues and ensures consistent file delivery.
+# ==============================================================================
+
+$ErrorActionPreference = "Stop"
+
+# Load environment variables from .env file if it exists
+if (Test-Path .env) {
+    Get-Content .env | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
+            $parts = $line.Split('=', 2)
+            $key = $parts[0].Trim()
+            $value = $parts[1].Trim().Trim('"').Trim("'")
+            [System.Environment]::SetEnvironmentVariable($key, $value)
+        }
+    }
+}
+
+$TargetIP   = [System.Environment]::GetEnvironmentVariable("DEPLOY_TARGET_IP")
+$TargetUser = [System.Environment]::GetEnvironmentVariable("DEPLOY_TARGET_USER")
+$TargetDir  = [System.Environment]::GetEnvironmentVariable("DEPLOY_TARGET_DIR")
+
+if ([string]::IsNullOrEmpty($TargetIP)) {
+    Write-Error "Error: DEPLOY_TARGET_IP is not set in the environment or .env file. Please define DEPLOY_TARGET_IP in your local .env file."
+    exit 1
+}
+if ([string]::IsNullOrEmpty($TargetUser)) { $TargetUser = "root" }
+if ([string]::IsNullOrEmpty($TargetDir)) { $TargetDir = "/home/cloudmesh" }
+
+$Remote     = "${TargetUser}@${TargetIP}"
+$Archive    = "cloudmesh-deploy.tar.gz"
+
+
+Write-Host "==================================================" -ForegroundColor Green
+Write-Host "Deploying CloudMesh to ${TargetIP}" -ForegroundColor Green
+Write-Host "==================================================" -ForegroundColor Green
+
+# Step 1: Build React Frontend Locally
+Write-Host "[1/4] Building React frontend..." -ForegroundColor Cyan
+
+if (-not (Test-Path frontend)) {
+    Write-Error "Error: 'frontend' directory not found."
+    exit 1
+}
+
+if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+    Write-Error "pnpm is not installed. Run: npm install -g pnpm"
+    exit 1
+}
+
+Set-Location frontend
+pnpm install
+pnpm build
+Set-Location ..
+
+# Step 2: Bundle into a single tar archive
+Write-Host "[2/4] Creating deployment archive ${Archive}..." -ForegroundColor Cyan
+
+# Remove old archive if it exists
+if (Test-Path $Archive) { Remove-Item $Archive }
+
+# Windows 10+ ships with BSD tar. Archive only the required files and folders.
+tar -czf $Archive `
+    frontend/dist `
+    src `
+    docker-compose.yml `
+    package.json `
+    postgres-init.sql `
+    prometheus.yml `
+    script.py `
+    requirements.txt `
+    .env.example
+
+# Step 3: Copy archive to remote server
+Write-Host "[3/4] Uploading archive to server..." -ForegroundColor Cyan
+scp $Archive "${Remote}:${TargetDir}/"
+
+# Clean up local archive
+Remove-Item $Archive
+
+# Step 4: Run remote operations via SSH
+Write-Host "[4/4] Executing remote environment updates..." -ForegroundColor Cyan
+
+$RemoteCommands = @'
+cd /home/cloudmesh
+
+echo "🛑 Stopping old services..."
+docker compose down --remove-orphans || true
+
+echo "🧹 Deleting older files..."
+rm -rf src frontend/dist docker-compose.yml package.json postgres-init.sql prometheus.yml script.py requirements.txt .env.example
+
+echo "📦 Extracting new archive..."
+tar -xzf cloudmesh-deploy.tar.gz
+rm -f cloudmesh-deploy.tar.gz
+
+echo "🐍 Preparing python virtual environment..."
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+fi
+
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install -r requirements.txt
+
+echo "🔑 Configuring environment..."
+if [ ! -f ".env" ]; then
+    cp .env.example .env
+    echo "⚠️ Created default .env file. Please configure the environment tokens."
+fi
+
+echo "📁 Creating output directories..."
+mkdir -p reports/snapshots
+mkdir -p frontend/dist/snapshots
+
+echo "🚀 Starting Docker services..."
+docker compose up -d
+
+echo "🔍 Running audit script..."
+./venv/bin/python script.py
+'@
+
+ssh $Remote $RemoteCommands
+
+Write-Host "==================================================" -ForegroundColor Green
+Write-Host "Deployment completed successfully!" -ForegroundColor Green
+Write-Host "==================================================" -ForegroundColor Green
