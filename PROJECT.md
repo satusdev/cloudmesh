@@ -49,10 +49,18 @@ graph TD
 ### Key Entities
 - **Zone (Domain):** Top-level domain registered in Cloudflare.
 - **DNS Record (A Record):** Subdomain mapping to an IPv4 address.
-- **Hetzner Server:** Virtual machine instance with a public IPv4 address, project name, server type, pricing, traffic statistics, and labels.
+- **Hetzner Server:** Virtual machine or load balancer instance with a public IPv4 address, project name, server type, pricing (dynamically resolved location-aware), traffic statistics, hardware specs (cores, memory, disk, datacenter), OS image description, and delete/lock flags.
 - **Mapping Item:** Resolved association containing subdomain, IP, target project, server name, status, creation date, type, cost, traffic, and labels.
 
-## 4. Configuration & Conventions
+## 4. Multi-Page Dashboard Architecture
+The React dashboard supports 5 main pages/tabs:
+- **Overview & Topology:** General metrics, advanced search/filters, SVG-based infrastructure mapping graph, and tabular audits.
+- **Cost & Billing:** Visual project and location spend breakdowns, unmapped resource alerts, stale resource optimization suggestions, and billing list.
+- **Domains & WHOIS:** Domain zone registration expiry tracking, timeline countdowns, and advanced registry health.
+- **Compute Resources:** Hardware resource aggregates (cores, memory, storage) and operating system distribution map.
+- **Security & Port Audit:** SSH/RDP public exposure detection alerts, open service scanners, and historical port status logs.
+
+## 5. Configuration & Conventions
 - **Credentials:** Shared via `.env` file or environment variables (`CLOUDFLARE_TOKEN`, `HETZNER_TOKEN_x`, `PUSHGATEWAY_URL`, `SLACK_BOT_TOKEN`, `SLACK_CHANNEL_ID`, `GOOGLE_CHAT_WEBHOOK_URL`).
 - **Feature Flags:** Toggled via `ENABLE_SLACK_NOTIFICATIONS`, `ENABLE_GOOGLE_CHAT_NOTIFICATIONS`, and `GENERATE_REPORTS`.
 - **Naming Conventions:** Python variables and functions follow `snake_case`. React components follow standard `PascalCase` and custom hooks follow `camelCase`.
