@@ -41,3 +41,48 @@ def parallel_fetch_hetzner_resources(projects):
             res = future.result()
             results.append(res)
     return results
+
+def fetch_dynamic_pricing(token):
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        server_types = fetch_all("https://api.hetzner.cloud/v1/server_types", headers, key="server_types")
+    except Exception as e:
+        print(f"Warning: Failed to fetch server types pricing: {e}")
+        server_types = []
+
+    try:
+        lb_types = fetch_all("https://api.hetzner.cloud/v1/load_balancer_types", headers, key="load_balancer_types")
+    except Exception as e:
+        print(f"Warning: Failed to fetch load balancer types pricing: {e}")
+        lb_types = []
+
+    # Build maps
+    server_prices = {}
+    for st in server_types:
+        name = st.get('name')
+        prices = {}
+        for p in st.get('prices', []):
+            loc = p.get('location')
+            try:
+                prices[loc] = float(p.get('price_monthly', {}).get('net', 0.0))
+            except (ValueError, TypeError, KeyError):
+                pass
+        server_prices[name] = prices
+
+    lb_prices = {}
+    for lbt in lb_types:
+        name = lbt.get('name')
+        prices = {}
+        for p in lbt.get('prices', []):
+            loc = p.get('location')
+            try:
+                prices[loc] = float(p.get('price_monthly', {}).get('net', 0.0))
+            except (ValueError, TypeError, KeyError):
+                pass
+        lb_prices[name] = prices
+
+    return {
+        "server": server_prices,
+        "load_balancer": lb_prices
+    }
+

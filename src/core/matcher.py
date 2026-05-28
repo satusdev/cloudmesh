@@ -7,7 +7,7 @@ import whois
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from src.api.cloudflare import fetch_cloudflare_zones, fetch_dns_records
-from src.api.hetzner import parallel_fetch_hetzner_resources, PRICING
+from src.api.hetzner import parallel_fetch_hetzner_resources, PRICING, fetch_dynamic_pricing
 
 # WHOIS cache persistent path
 CACHE_PATH = os.path.join('reports', 'whois_cache.json')
@@ -216,10 +216,24 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
     now = datetime.utcnow()
     all_resources = []
     
+    # 1. Fetch dynamic pricing maps using first project's token
+    pricing_maps = None
+    if hetzner_projects:
+        try:
+            first_token = hetzner_projects[0]['api_token']
+            pricing_maps = fetch_dynamic_pricing(first_token)
+            print("Successfully loaded dynamic Hetzner pricing.")
+        except Exception as e:
+            print(f"Warning: Failed to fetch dynamic Hetzner pricing maps: {e}")
+            pricing_maps = None
+
     hetzner_results = parallel_fetch_hetzner_resources(hetzner_projects)
     
     for project_res in hetzner_results:
         project_name = project_res['project_name']
+        
+        # Build server ID to name map for Floating IP lookup
+        server_id_to_name = {s['id']: s['name'] for s in project_res.get('servers', [])}
         
         # 1. Process Virtual Servers
         for server in project_res.get('servers', []):
@@ -254,6 +268,29 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                 sanitized_labels_dict[k] = v
             labels_str = ",".join([f"{k}={v}" for k, v in sanitized_labels_dict.items()])
             
+            # Dynamic pricing lookup
+            st_name = server['server_type']['name']
+            loc_name = server.get('datacenter', {}).get('location', {}).get('name', 'N/A')
+            dc_name = server.get('datacenter', {}).get('name', 'N/A')
+            
+            price = 0.0
+            if pricing_maps and st_name in pricing_maps.get('server', {}):
+                prices_by_loc = pricing_maps['server'][st_name]
+                if loc_name in prices_by_loc:
+                    price = prices_by_loc[loc_name]
+                elif prices_by_loc:
+                    price = next(iter(prices_by_loc.values()))
+            
+            if price == 0.0:
+                price = PRICING.get(st_name, 0.0)
+
+            cores = server.get('server_type', {}).get('cores', 0)
+            memory = server.get('server_type', {}).get('memory', 0.0)
+            disk = server.get('server_type', {}).get('disk', 0)
+            image_desc = server.get('image', {}).get('description', 'N/A') if server.get('image') else 'N/A'
+            protection_delete = server.get('protection', {}).get('delete', False)
+            locked = server.get('locked', False)
+
             all_resources.append({
                 'resource_type': 'server',
                 'project': project_name,
@@ -261,10 +298,19 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                 'ip': ip,
                 'status': server['status'],
                 'created': created,
-                'server_type': server['server_type']['name'],
+                'server_type': st_name,
                 'labels': labels_str,
-                'price_monthly': PRICING.get(server['server_type']['name'], 0.0),
-                'traffic_mb': 50
+                'price_monthly': price,
+                'traffic_mb': 50,
+                # Enriched fields
+                'cores': cores,
+                'memory': memory,
+                'disk': disk,
+                'location': loc_name,
+                'datacenter': dc_name,
+                'image': image_desc,
+                'protection_delete': protection_delete,
+                'locked': locked
             })
             
         # 2. Process Load Balancers
@@ -283,17 +329,39 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
             labels_str = ",".join([f"{k}={v}" for k, v in sanitized_labels_dict.items()])
             
             lb_type = lb['load_balancer_type']['name']
+            loc_name = lb.get('location', {}).get('name', 'N/A')
+            
+            price = 0.0
+            if pricing_maps and lb_type in pricing_maps.get('load_balancer', {}):
+                prices_by_loc = pricing_maps['load_balancer'][lb_type]
+                if loc_name in prices_by_loc:
+                    price = prices_by_loc[loc_name]
+                elif prices_by_loc:
+                    price = next(iter(prices_by_loc.values()))
+                    
+            if price == 0.0:
+                price = PRICING.get(lb_type, 0.0)
+
+            services_count = len(lb.get('services', []))
+            targets_count = len(lb.get('targets', []))
+            algorithm = lb.get('algorithm', {}).get('type', 'round_robin')
+
             all_resources.append({
                 'resource_type': 'load_balancer',
                 'project': project_name,
                 'server_name': lb['name'],
                 'ip': ip,
-                'status': lb.get('algorithm', {}).get('type', 'round_robin'),
+                'status': algorithm,
                 'created': created,
                 'server_type': lb_type,
                 'labels': labels_str,
-                'price_monthly': PRICING.get(lb_type, 0.0),
-                'traffic_mb': 0
+                'price_monthly': price,
+                'traffic_mb': 0,
+                # Enriched fields
+                'location': loc_name,
+                'services_count': services_count,
+                'targets_count': targets_count,
+                'algorithm': algorithm
             })
             
         # 3. Process Floating IPs
@@ -309,17 +377,34 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                 sanitized_labels_dict[k] = v
             labels_str = ",".join([f"{k}={v}" for k, v in sanitized_labels_dict.items()])
             
+            fip_type = fip.get('type', 'ipv4')
+            loc_name = fip.get('home_location', {}).get('name', 'N/A')
+            
+            # Resolve assigned server name
+            assigned_server_id = fip.get('server')
+            assigned_server_name = server_id_to_name.get(assigned_server_id) if assigned_server_id else None
+
+            # Dynamic price
+            if fip_type == 'ipv4':
+                price = PRICING.get('floating_ip_ipv4', 3.00)
+            else:
+                price = PRICING.get('floating_ip_ipv6', 1.00)
+
             all_resources.append({
                 'resource_type': 'floating_ip',
                 'project': project_name,
                 'server_name': fip.get('description') or f"Floating IP {ip}",
                 'ip': ip,
-                'status': 'assigned' if fip.get('server') else 'unassigned',
+                'status': 'assigned' if assigned_server_id else 'unassigned',
                 'created': created,
-                'server_type': fip['type'],
+                'server_type': fip_type,
                 'labels': labels_str,
-                'price_monthly': PRICING.get('floating_ip', 1.00),
-                'traffic_mb': 0
+                'price_monthly': price,
+                'traffic_mb': 0,
+                # Enriched fields
+                'location': loc_name,
+                'fip_type': fip_type,
+                'assigned_server': assigned_server_name
             })
 
     ip_to_server = {res['ip']: res for res in all_resources}
