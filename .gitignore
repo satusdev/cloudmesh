@@ -37,4 +37,5 @@ __pycache__/
 frontend/dist/
 frontend/node_modules/
 frontend/.eslintcache
-
+frontend/public/data.json
+frontend/public/snapshots/
