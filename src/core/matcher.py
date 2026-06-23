@@ -42,7 +42,15 @@ def tcp_health_check(ip, port=80, timeout=2):
 
 def get_domain_expiry(domain):
     if domain in whois_cache:
-        return whois_cache[domain]
+        val = whois_cache[domain]
+        if isinstance(val, dict) and val.get("status") == "error":
+            ts = val.get("timestamp", 0)
+            if time.time() - ts < 86400:
+                return "Error / N/A"
+            # Expired error entry, delete to allow retry
+            del whois_cache[domain]
+        else:
+            return val
 
     try:
         w = whois.whois(domain)
@@ -71,7 +79,11 @@ def get_domain_expiry(domain):
 
     except Exception as e:
         print(f"WHOIS error for {domain}: {e}")
-        whois_cache[domain] = "Error / N/A"
+        whois_cache[domain] = {
+            "status": "error",
+            "timestamp": time.time(),
+            "reason": str(e)
+        }
         return "Error / N/A"
 
 def get_days_to_expiry(expiry_str):
@@ -211,6 +223,13 @@ def generate_recommendations(all_resources, matched_ips, mapping_by_domain):
                 })
                 
     return recommendations, round(total_potential_savings, 2)
+
+def fetch_records_for_zone(token, zone_id, zone_name):
+    try:
+        return zone_name, fetch_dns_records(token, zone_id)
+    except Exception as e:
+        print(f"Error fetching DNS records for zone {zone_name}: {e}")
+        return zone_name, []
 
 def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
     now = datetime.utcnow()
@@ -410,11 +429,19 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
     ip_to_server = {res['ip']: res for res in all_resources}
     
     zones = fetch_cloudflare_zones(cloudflare_token)
+    zone_results = []
+    if zones:
+        with ThreadPoolExecutor(max_workers=min(10, len(zones))) as executor:
+            futures = {
+                executor.submit(fetch_records_for_zone, cloudflare_token, zone['id'], zone['name']): zone
+                for zone in zones
+            }
+            for future in futures:
+                zone_name, records = future.result()
+                zone_results.append((zone_name, records))
+
     a_records = []
-    for zone in zones:
-        zone_id = zone['id']
-        zone_name = zone['name']
-        records = fetch_dns_records(cloudflare_token, zone_id)
+    for zone_name, records in zone_results:
         for record in records:
             if record['type'] in ('A', 'AAAA'):
                 subdomain = record['name'].replace(f".{zone_name}", "") if record['name'] != zone_name else "@"
@@ -451,8 +478,14 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
         with ThreadPoolExecutor(max_workers=min(25, len(a_records))) as executor:
             enriched_records = list(executor.map(enrich_record_telemetry, a_records))
 
+    # Pre-warm WHOIS cache in parallel
+    unique_domains = {record['domain'] for record in enriched_records}
+    if unique_domains:
+        print(f"Pre-warming WHOIS cache for {len(unique_domains)} domains in parallel...")
+        with ThreadPoolExecutor(max_workers=min(5, len(unique_domains))) as executor:
+            list(executor.map(get_domain_expiry, unique_domains))
+
     mapping_by_domain = {}
-    unique_domains = set()
     total_a_records = 0
     matched_server_ips = set()
     unmatched_ips = set()
