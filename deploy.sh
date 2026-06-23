@@ -79,6 +79,7 @@ rm -f "${ARCHIVE}"
 # Step 4: Run remote operations
 echo "⚙️ Running remote environment updates..."
 ssh "${TARGET_USER}@${TARGET_IP}" bash -c "
+  mkdir -p ${TARGET_DIR}
   cd ${TARGET_DIR}
   
   echo '🛑 Stopping old services...'

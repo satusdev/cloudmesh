@@ -30,7 +30,7 @@ ssh root@<your-server-ip>
 Update and install dependencies:
 ```bash
 apt update && apt upgrade -y
-apt install -y python3 python3-pip python3-venv git wkhtmltopdf
+apt install -y python3 python3-pip python3-venv git wkhtmltopdf whois
 ```
 
 ---
