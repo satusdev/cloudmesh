@@ -143,7 +143,7 @@ def check_single_port(ip, port, timeout=1.0):
         return port, False
 
 def scan_ip_ports(ip, timeout=1.0):
-    ports = [22, 80, 443, 3389]
+    ports = [21, 22, 23, 80, 443, 3306, 3389, 5432, 6379, 27017, 9200]
     status = {}
     with ThreadPoolExecutor(max_workers=len(ports)) as executor:
         futures = {executor.submit(check_single_port, ip, port, timeout): port for port in ports}
@@ -156,6 +156,7 @@ def run_port_audit(ips, timeout=1.0):
     ip_port_status = {}
     if not ips:
         return ip_port_status
+    ports = [21, 22, 23, 80, 443, 3306, 3389, 5432, 6379, 27017, 9200]
     with ThreadPoolExecutor(max_workers=min(20, len(ips))) as executor:
         future_to_ip = {executor.submit(scan_ip_ports, ip, timeout): ip for ip in ips}
         for future in future_to_ip:
@@ -163,7 +164,7 @@ def run_port_audit(ips, timeout=1.0):
             try:
                 ip_port_status[ip] = future.result()
             except Exception:
-                ip_port_status[ip] = {"22": False, "80": False, "443": False, "3389": False}
+                ip_port_status[ip] = {str(p): False for p in ports}
     return ip_port_status
 
 # Helper functions for Recommendations
@@ -223,6 +224,271 @@ def generate_recommendations(all_resources, matched_ips, mapping_by_domain):
                 })
                 
     return recommendations, round(total_potential_savings, 2)
+
+def generate_security_alerts(all_resources, port_audit_results, mapping_by_domain):
+    security_alerts = []
+    
+    # 1. Server/Infrastructure Security Audits
+    for res in all_resources:
+        if res['resource_type'] == 'server':
+            name = res['server_name']
+            ip = res['ip']
+            project = res['project']
+            
+            # A. No Firewalls Check
+            firewalls = res.get('firewalls', [])
+            if not firewalls:
+                security_alerts.append({
+                    "id": f"sec_no_firewall_{name}_{project}",
+                    "type": "no_firewall",
+                    "severity": "high",
+                    "resource_name": name,
+                    "resource_type": "server",
+                    "ip": ip,
+                    "project": project,
+                    "description": f"Virtual Server '{name}' has no firewalls assigned. It is directly exposed to public traffic.",
+                    "suggestion": "Create a Firewall in Hetzner Cloud Console and apply it to this server to restrict incoming traffic."
+                })
+            
+            # B. EOL OS Check
+            image_desc = res.get('image', '').lower()
+            eol_patterns = ['ubuntu 14.04', 'ubuntu 16.04', 'ubuntu 18.04', 'centos 7', 'centos 8', 'debian 8', 'debian 9']
+            is_eol = False
+            for pat in eol_patterns:
+                if pat in image_desc:
+                    is_eol = True
+                    break
+            if is_eol:
+                security_alerts.append({
+                    "id": f"sec_eol_os_{name}_{project}",
+                    "type": "eol_os",
+                    "severity": "medium",
+                    "resource_name": name,
+                    "resource_type": "server",
+                    "ip": ip,
+                    "project": project,
+                    "description": f"Virtual Server '{name}' runs an EOL OS image ({res.get('image')}). It will not receive security updates.",
+                    "suggestion": "Upgrade the server OS to a newer supported release (e.g. Ubuntu 22.04 or 24.04)."
+                })
+                
+            # C. No SSH Keys Check
+            ssh_keys = res.get('ssh_keys', [])
+            if not ssh_keys:
+                security_alerts.append({
+                    "id": f"sec_no_ssh_keys_{name}_{project}",
+                    "type": "no_ssh_keys",
+                    "severity": "medium",
+                    "resource_name": name,
+                    "resource_type": "server",
+                    "ip": ip,
+                    "project": project,
+                    "description": f"Virtual Server '{name}' has no SSH keys configured on Hetzner API metadata. Password-based authentication might be exposed.",
+                    "suggestion": "Disable password authentication in SSH configuration and associate public keys for access."
+                })
+                
+            # D. Backups Disabled Check
+            backup_window = res.get('backup_window')
+            if not backup_window or str(backup_window).lower() in ('none', 'null', ''):
+                security_alerts.append({
+                    "id": f"sec_disabled_backups_{name}_{project}",
+                    "type": "disabled_backups",
+                    "severity": "low",
+                    "resource_name": name,
+                    "resource_type": "server",
+                    "ip": ip,
+                    "project": project,
+                    "description": f"Virtual Server '{name}' does not have scheduled backups enabled.",
+                    "suggestion": "Enable backups in the Hetzner Cloud Console for this server to prevent data loss."
+                })
+
+            # E. Database & Sensitive Ports Exposure Check
+            if ip in port_audit_results:
+                ports_status = port_audit_results[ip]
+                db_ports = {
+                    "3306": "MySQL/MariaDB",
+                    "5432": "PostgreSQL",
+                    "27017": "MongoDB",
+                    "6379": "Redis",
+                    "9200": "Elasticsearch"
+                }
+                for port, db_name in db_ports.items():
+                    if ports_status.get(port):
+                        security_alerts.append({
+                            "id": f"sec_exposed_db_{port}_{name}_{project}",
+                            "type": "exposed_db",
+                            "severity": "critical",
+                            "resource_name": name,
+                            "resource_type": "server",
+                            "ip": ip,
+                            "project": project,
+                            "description": f"Database port {port} ({db_name}) is open and publicly accessible on server '{name}'.",
+                            "suggestion": "Block this port in your Hetzner Firewall, or restrict it to trusted application IPs."
+                        })
+                
+                insecure_ports = {
+                    "21": "FTP",
+                    "23": "Telnet"
+                }
+                for port, proto in insecure_ports.items():
+                    if ports_status.get(port):
+                        security_alerts.append({
+                            "id": f"sec_exposed_proto_{port}_{name}_{project}",
+                            "type": "exposed_insecure",
+                            "severity": "high",
+                            "resource_name": name,
+                            "resource_type": "server",
+                            "ip": ip,
+                            "project": project,
+                            "description": f"Insecure protocol port {port} ({proto}) is open and publicly accessible on server '{name}'.",
+                            "suggestion": f"Close port {port} and use secure alternatives like SFTP (SSH) or SSH tunnel."
+                        })
+                        
+    # 2. DNS/Cloudflare Specific Security Audits
+    for domain, items in mapping_by_domain.items():
+        for item in items:
+            sub = item['subdomain']
+            hostname = domain if sub == '@' else f"{sub}.{domain}"
+            ip = item['ip']
+            proxied = item.get('proxied', False)
+            is_matched = item['server_name'] != 'No match'
+            
+            # F. origin IP Exposure
+            if is_matched and not proxied:
+                security_alerts.append({
+                    "id": f"sec_unproxied_dns_{hostname}",
+                    "type": "unproxied_dns",
+                    "severity": "medium",
+                    "resource_name": hostname,
+                    "resource_type": "dns_record",
+                    "ip": ip,
+                    "project": item.get('project', 'N/A'),
+                    "description": f"DNS record '{hostname}' is not proxied (DNS-only mode), exposing origin server IP ({ip}) directly to the public internet.",
+                    "suggestion": "Enable the Cloudflare proxy (orange cloud) for this record to hide the origin IP and utilize DDoS protection."
+                })
+                
+            # G. Wildcard DNS Exposure
+            if sub.startswith('*'):
+                security_alerts.append({
+                    "id": f"sec_wildcard_dns_{hostname}",
+                    "type": "wildcard_dns",
+                    "severity": "low",
+                    "resource_name": hostname,
+                    "resource_type": "dns_record",
+                    "ip": ip,
+                    "project": item.get('project', 'N/A'),
+                    "description": f"Wildcard DNS record '{hostname}' is active, allowing resolution of any arbitrary subdomain to target IP.",
+                    "suggestion": "Review if wildcard resolution is strictly necessary, and replace with explicit subdomains if possible."
+                })
+                
+    # Sort security alerts: Critical -> High -> Medium -> Low
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    security_alerts.sort(key=lambda x: severity_order.get(x['severity'], 4))
+    
+    return security_alerts
+
+def generate_cleanup_flags(mapping_by_domain, all_resources):
+    cleanup_flags = []
+    
+    # helper to check private IP range (RFC 1918)
+    def is_private_ip(ip):
+        parts = ip.split('.')
+        if len(parts) == 4:
+            try:
+                p0 = int(parts[0])
+                p1 = int(parts[1])
+                if p0 == 10:
+                    return True
+                if p0 == 192 and p1 == 168:
+                    return True
+                if p0 == 172 and (16 <= p1 <= 31):
+                    return True
+                if p0 == 127:
+                    return True
+            except ValueError:
+                pass
+        elif ':' in ip: # IPv6 loopback or private site-local
+            if ip.startswith('fc00:') or ip.startswith('fd00:') or ip == '::1':
+                return True
+        return False
+
+    for domain, items in mapping_by_domain.items():
+        for item in items:
+            sub = item['subdomain']
+            hostname = domain if sub == '@' else f"{sub}.{domain}"
+            ip = item['ip']
+            dns_type = item.get('dns_type', 'A')
+            dns_latency = item.get('dns_latency', 0.0)
+            http_latency = item.get('http_latency', 0.0)
+            is_matched = item['server_name'] != 'No match'
+            
+            # A. Dangling DNS
+            if not is_matched:
+                cleanup_flags.append({
+                    "id": f"clean_dangling_{hostname}_{ip}",
+                    "domain": domain,
+                    "subdomain": sub,
+                    "dns_type": dns_type,
+                    "ip": ip,
+                    "flag_type": "dangling_dns",
+                    "severity": "high",
+                    "reason": "Dangling DNS Record",
+                    "description": f"DNS record '{hostname}' points to IP {ip}, which is not mapped to any server in your Hetzner Cloud projects. If this IP belongs to an external provider or has been released, this poses a subdomain takeover security vulnerability.",
+                    "suggestion": "Verify if this DNS record is still needed. If not, delete it from Cloudflare. If the server was replaced, update the record's IP."
+                })
+                continue
+            
+            # B. Private IP exposure
+            if is_private_ip(ip):
+                cleanup_flags.append({
+                    "id": f"clean_private_ip_{hostname}_{ip}",
+                    "domain": domain,
+                    "subdomain": sub,
+                    "dns_type": dns_type,
+                    "ip": ip,
+                    "flag_type": "private_ip",
+                    "severity": "medium",
+                    "reason": "Private IP Address",
+                    "description": f"DNS record '{hostname}' points to a private/internal IP address ({ip}) on public DNS. Public records should normally target public-facing resources.",
+                    "suggestion": "Remove this record if it is a stale internal test setting, or replace it with a VPN/internal DNS configuration."
+                })
+                continue
+                
+            # C. DNS Resolution Error
+            if dns_latency == -1.0:
+                cleanup_flags.append({
+                    "id": f"clean_resolution_error_{hostname}_{ip}",
+                    "domain": domain,
+                    "subdomain": sub,
+                    "dns_type": dns_type,
+                    "ip": ip,
+                    "flag_type": "resolution_error",
+                    "severity": "medium",
+                    "reason": "DNS Resolution Error",
+                    "description": f"DNS record '{hostname}' failed to resolve during socket host queries. The domain might have configuration issues or registry lock issues.",
+                    "suggestion": f"Inspect your DNS server config for '{domain}' or verify the zone status in Cloudflare."
+                })
+                continue
+                
+            # D. Dead Target
+            if http_latency == -1.0:
+                cleanup_flags.append({
+                    "id": f"clean_dead_target_{hostname}_{ip}",
+                    "domain": domain,
+                    "subdomain": sub,
+                    "dns_type": dns_type,
+                    "ip": ip,
+                    "flag_type": "dead_target",
+                    "severity": "low",
+                    "reason": "Inactive Target Host",
+                    "description": f"DNS record '{hostname}' points to IP {ip}, which has failed connection checks. Port 80 and 443 timed out, and the host is unresponsive.",
+                    "suggestion": "Confirm if the target server is powered down or if the IP is obsolete. Consider deleting the record if the resource is retired."
+                })
+
+    # Sort: High -> Medium -> Low
+    severity_order = {"high": 0, "medium": 1, "low": 2}
+    cleanup_flags.sort(key=lambda x: severity_order.get(x['severity'], 3))
+    
+    return cleanup_flags
 
 def fetch_records_for_zone(token, zone_id, zone_name):
     try:
@@ -287,21 +553,32 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                 sanitized_labels_dict[k] = v
             labels_str = ",".join([f"{k}={v}" for k, v in sanitized_labels_dict.items()])
             
-            # Dynamic pricing lookup
+            # Precise instance pricing lookup
             st_name = server['server_type']['name']
             loc_name = server.get('datacenter', {}).get('location', {}).get('name', 'N/A')
             dc_name = server.get('datacenter', {}).get('name', 'N/A')
             
             price = 0.0
-            if pricing_maps and st_name in pricing_maps.get('server', {}):
-                prices_by_loc = pricing_maps['server'][st_name]
-                if loc_name in prices_by_loc:
-                    price = prices_by_loc[loc_name]
-                elif prices_by_loc:
-                    price = next(iter(prices_by_loc.values()))
+            server_type_prices = server.get('server_type', {}).get('prices', [])
+            for p in server_type_prices:
+                if p.get('location') == loc_name:
+                    try:
+                        price = float(p.get('price_monthly', {}).get('net', 0.0))
+                        break
+                    except (ValueError, TypeError, KeyError):
+                        pass
             
+            # Fallback to dynamic pricing maps or static catalog
             if price == 0.0:
-                price = PRICING.get(st_name, 0.0)
+                if pricing_maps and st_name in pricing_maps.get('server', {}):
+                    prices_by_loc = pricing_maps['server'][st_name]
+                    if loc_name in prices_by_loc:
+                        price = prices_by_loc[loc_name]
+                    elif prices_by_loc:
+                        price = next(iter(prices_by_loc.values()))
+                
+                if price == 0.0:
+                    price = PRICING.get(st_name, 0.0)
 
             cores = server.get('server_type', {}).get('cores', 0)
             memory = server.get('server_type', {}).get('memory', 0.0)
@@ -329,7 +606,11 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                 'datacenter': dc_name,
                 'image': image_desc,
                 'protection_delete': protection_delete,
-                'locked': locked
+                'locked': locked,
+                # Security checks fields
+                'firewalls': server.get('firewalls', []),
+                'ssh_keys': server.get('ssh_keys', []),
+                'backup_window': server.get('backup_window')
             })
             
         # 2. Process Load Balancers
@@ -351,15 +632,26 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
             loc_name = lb.get('location', {}).get('name', 'N/A')
             
             price = 0.0
-            if pricing_maps and lb_type in pricing_maps.get('load_balancer', {}):
-                prices_by_loc = pricing_maps['load_balancer'][lb_type]
-                if loc_name in prices_by_loc:
-                    price = prices_by_loc[loc_name]
-                elif prices_by_loc:
-                    price = next(iter(prices_by_loc.values()))
-                    
+            lb_type_prices = lb.get('load_balancer_type', {}).get('prices', [])
+            for p in lb_type_prices:
+                if p.get('location') == loc_name:
+                    try:
+                        price = float(p.get('price_monthly', {}).get('net', 0.0))
+                        break
+                    except (ValueError, TypeError, KeyError):
+                        pass
+
+            # Fallback to dynamic pricing maps or static catalog
             if price == 0.0:
-                price = PRICING.get(lb_type, 0.0)
+                if pricing_maps and lb_type in pricing_maps.get('load_balancer', {}):
+                    prices_by_loc = pricing_maps['load_balancer'][lb_type]
+                    if loc_name in prices_by_loc:
+                        price = prices_by_loc[loc_name]
+                    elif prices_by_loc:
+                        price = next(iter(prices_by_loc.values()))
+                        
+                if price == 0.0:
+                    price = PRICING.get(lb_type, 0.0)
 
             services_count = len(lb.get('services', []))
             targets_count = len(lb.get('targets', []))
@@ -651,7 +943,17 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
     # 4. Generate Optimization Recommendations
     recommendations, total_potential_savings = generate_recommendations(all_resources, matched_server_ips, mapping_by_domain)
 
+    # 5. Generate Security Alerts
+    security_alerts = generate_security_alerts(all_resources, port_audit_results, mapping_by_domain)
+
+    # 6. Generate Cleanup Flags
+    cleanup_flags = generate_cleanup_flags(mapping_by_domain, all_resources)
+
     # Persist the updated WHOIS cache
     save_whois_cache(whois_cache)
 
-    return mapping_by_domain, unique_domains, total_a_records, matched_server_ips, unmatched_ips, ip_to_server, unmapped_servers, diff, recommendations, port_audit_results
+    return (
+        mapping_by_domain, unique_domains, total_a_records, matched_server_ips, unmatched_ips, 
+        ip_to_server, unmapped_servers, diff, recommendations, port_audit_results, 
+        security_alerts, cleanup_flags
+    )

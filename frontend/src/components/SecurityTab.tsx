@@ -1,5 +1,11 @@
-import React from 'react';
-import { AlertTriangle } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { 
+  ShieldAlert, 
+  AlertOctagon, 
+  AlertTriangle, 
+  ShieldQuestion, 
+  ShieldCheck
+} from 'lucide-react';
 import type { AuditData } from '../types';
 
 interface SecurityTabProps {
@@ -7,141 +13,240 @@ interface SecurityTabProps {
 }
 
 export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
-  const rdpOpen = Object.entries(data.port_audit_results || {}).filter(([, ports]) => ports["3389"]);
-  const sshOpen = Object.entries(data.port_audit_results || {}).filter(([, ports]) => ports["22"]);
+  const alerts = data.security_alerts || [];
+  
+  const stats = useMemo(() => {
+    const critical = alerts.filter(a => a.severity === 'critical').length;
+    const high = alerts.filter(a => a.severity === 'high').length;
+    const medium = alerts.filter(a => a.severity === 'medium').length;
+    const low = alerts.filter(a => a.severity === 'low').length;
+    return { total: alerts.length, critical, high, medium, low };
+  }, [alerts]);
+
+  const getSeverityStyles = (severity: string) => {
+    switch (severity) {
+      case 'critical':
+        return {
+          bg: 'bg-rose-500/10 border-rose-550/30 text-rose-500',
+          title: 'text-rose-500 font-extrabold',
+          badge: 'bg-rose-600 text-white font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] uppercase tracking-wider',
+          icon: <AlertOctagon className="h-5 w-5 text-rose-500 shrink-0" />
+        };
+      case 'high':
+        return {
+          bg: 'bg-orange-500/10 border-orange-550/20 text-orange-500',
+          title: 'text-orange-500 font-extrabold',
+          badge: 'bg-orange-500 text-white font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] uppercase tracking-wider',
+          icon: <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0" />
+        };
+      case 'medium':
+        return {
+          bg: 'bg-amber-500/10 border-amber-550/20 text-amber-600 dark:text-amber-400',
+          title: 'text-amber-600 dark:text-amber-400 font-extrabold',
+          badge: 'bg-amber-500 text-white dark:bg-amber-500/20 dark:text-amber-400 font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] uppercase tracking-wider',
+          icon: <ShieldAlert className="h-5 w-5 text-amber-500 shrink-0" />
+        };
+      default:
+        return {
+          bg: 'bg-slate-100 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400',
+          title: 'text-slate-650 dark:text-slate-400 font-bold',
+          badge: 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold px-2 py-0.5 rounded text-[9px] uppercase tracking-wider',
+          icon: <ShieldQuestion className="h-5 w-5 text-slate-400 shrink-0" />
+        };
+    }
+  };
+
+  const openPortsMap = useMemo(() => {
+    const map: Record<string, number[]> = {};
+    Object.entries(data.port_audit_results || {}).forEach(([ip, ports]) => {
+      const open: number[] = [];
+      Object.entries(ports).forEach(([p, isOpen]) => {
+        if (isOpen) open.push(parseInt(p));
+      });
+      open.sort((a, b) => a - b);
+      map[ip] = open;
+    });
+    return map;
+  }, [data]);
 
   return (
-    <div className="space-y-8 animate-fade-in text-xs">
-      {/* Top specs summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="glass-panel p-5 rounded-2xl border-slate-200 dark:border-slate-800">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Scanned IPs</span>
-          <span className="text-3xl font-black block mt-2 text-slate-105">{Object.keys(data.port_audit_results || {}).length} IPs</span>
+    <div className="space-y-6">
+      {/* Top Severity Counters */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+          <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider">Total Alerts</p>
+          <div className="flex items-baseline justify-between mt-2">
+            <span className="text-3xl font-black">{stats.total}</span>
+            <span className="text-xs text-slate-400 font-semibold">Checks failed</span>
+          </div>
         </div>
-        <div className="glass-panel p-5 rounded-2xl border-slate-200 dark:border-slate-800">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">SSH Exposed (22)</span>
-          <span className={`text-3xl font-black block mt-2 ${sshOpen.length > 0 ? 'text-amber-505 animate-pulse font-bold' : 'text-emerald-505'}`}>
-            {sshOpen.length} open
-          </span>
+
+        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+          <p className="text-xs text-rose-500 font-semibold uppercase tracking-wider">Critical</p>
+          <div className="flex items-baseline justify-between mt-2">
+            <span className={`text-3xl font-black ${stats.critical > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>
+              {stats.critical}
+            </span>
+            <span className="text-xs text-slate-400 font-semibold">Direct exploits</span>
+          </div>
         </div>
-        <div className="glass-panel p-5 rounded-2xl border-slate-200 dark:border-slate-800">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">RDP Exposed (3389)</span>
-          <span className={`text-3xl font-black block mt-2 ${rdpOpen.length > 0 ? 'text-rose-505 animate-pulse font-bold' : 'text-emerald-555'}`}>
-            {rdpOpen.length} open
-          </span>
+
+        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+          <p className="text-xs text-orange-500 font-semibold uppercase tracking-wider">High</p>
+          <div className="flex items-baseline justify-between mt-2">
+            <span className="text-3xl font-black text-orange-500">{stats.high}</span>
+            <span className="text-xs text-slate-400 font-semibold">Exposed ports</span>
+          </div>
         </div>
-        <div className="glass-panel p-5 rounded-2xl border-slate-200 dark:border-slate-800">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">HTTP Service (80)</span>
-          <span className="text-3xl font-black text-indigo-505 block mt-2">
-            {Object.values(data.port_audit_results || {}).filter(ports => ports["80"]).length} open
-          </span>
+
+        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+          <p className="text-xs text-amber-500 font-semibold uppercase tracking-wider">Medium</p>
+          <div className="flex items-baseline justify-between mt-2">
+            <span className="text-3xl font-black text-amber-500">{stats.medium}</span>
+            <span className="text-xs text-slate-400 font-semibold">Configuration drift</span>
+          </div>
         </div>
-        <div className="glass-panel p-5 rounded-2xl border-slate-200 dark:border-slate-800">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">HTTPS Secure (443)</span>
-          <span className="text-3xl font-black text-emerald-505 block mt-2">
-            {Object.values(data.port_audit_results || {}).filter(ports => ports["443"]).length} open
-          </span>
+
+        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between col-span-2 md:col-span-1">
+          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Low</p>
+          <div className="flex items-baseline justify-between mt-2">
+            <span className="text-3xl font-black text-slate-500 dark:text-slate-400">{stats.low}</span>
+            <span className="text-xs text-slate-400 font-semibold">Minor warnings</span>
+          </div>
         </div>
       </div>
 
-      {/* Security Alerts and details */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Security alerts list */}
-        <div className="lg:col-span-1 glass-panel p-5 rounded-2xl border-slate-200 dark:border-slate-800 space-y-4">
-          <h3 className="text-sm font-bold flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-rose-500" />
-            Management Port Security Alerts
-          </h3>
-          
-          <div className="space-y-3 pt-2">
-            {rdpOpen.length === 0 && sshOpen.length === 0 ? (
-              <div className="bg-emerald-500/5 border border-emerald-500/15 p-4 rounded-xl text-center text-emerald-500 font-bold">
-                ✅ Zero management ports (SSH/RDP) are exposed directly to the public internet!
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* Left Side: Grouped Security Alerts List (3 cols) */}
+        <div className="lg:col-span-3 space-y-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+            <h3 className="text-sm font-black flex items-center gap-2 mb-4">
+              <ShieldAlert className="h-5 w-5 text-rose-500" />
+              Active Security Infrastructure Shortcomings
+            </h3>
+
+            <div className="space-y-3.5 max-h-[600px] overflow-y-auto pr-2">
+              {alerts.length > 0 ? (
+                alerts.map((alert) => {
+                  const style = getSeverityStyles(alert.severity);
+                  return (
+                    <div 
+                      key={alert.id} 
+                      className={`border rounded-2xl p-4 transition duration-200 flex items-start gap-3.5 ${style.bg}`}
+                    >
+                      {style.icon}
+                      <div className="space-y-1.5 flex-1 text-xs">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <span className={`font-extrabold text-[13px] tracking-tight ${style.title}`}>
+                            {alert.resource_name}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded font-bold text-[9px] uppercase">
+                              {alert.resource_type}
+                            </span>
+                            <span className={style.badge}>
+                              {alert.severity}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="text-slate-655 dark:text-slate-350 font-medium leading-relaxed">
+                          {alert.description}
+                        </p>
+
+                        <div className="pt-2 border-t border-slate-200/40 dark:border-slate-800/40 mt-1 space-y-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Mitigation Step</span>
+                          <span className="text-slate-700 dark:text-slate-300 font-semibold">{alert.suggestion}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="bg-emerald-500/10 border border-emerald-500/20 p-8 rounded-2xl text-center space-y-2">
+                  <div className="bg-emerald-500/20 p-3 rounded-full text-emerald-500 inline-block">
+                    <ShieldCheck className="h-8 w-8" />
+                  </div>
+                  <h4 className="text-emerald-500 font-bold">Zero Security Findings</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                    Congratulations! Your infrastructure meets all audit standards.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side: Detailed Port scan logs (2 cols) */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800/50 flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-black">Port Scanning Exposure Log</h3>
+                <p className="text-[10px] text-slate-400 font-semibold mt-0.5 uppercase tracking-wider">Active connection audits</p>
               </div>
-            ) : (
-              <>
-                {rdpOpen.map(([ip]) => {
-                  const serverName = data.servers.find(s => s.ip === ip)?.server_name || "Unknown Server";
-                  return (
-                    <div key={ip} className="bg-rose-500/5 border border-rose-550/20 p-3 rounded-xl space-y-1">
-                      <span className="font-bold text-rose-550 block">⚠️ CRITICAL: RDP Port 3389 Exposed</span>
-                      <span className="text-[10px] text-slate-750 dark:text-slate-300 font-medium">Server '{serverName}' ({ip}) is exposing Remote Desktop. RDP ports are frequently targeted by brute-force network scanners.</span>
-                    </div>
-                  );
-                })}
-                {sshOpen.map(([ip]) => {
-                  const serverName = data.servers.find(s => s.ip === ip)?.server_name || "Unknown Server";
-                  return (
-                    <div key={ip} className="bg-amber-550/5 border border-amber-500/20 p-3 rounded-xl space-y-1">
-                      <span className="font-bold text-amber-555 block">⚠️ WARNING: SSH Port 22 Exposed</span>
-                      <span className="text-[10px] text-slate-750 dark:text-slate-300 font-medium">Server '{serverName}' ({ip}) exposes standard SSH port 22. Ensure password authentication is disabled and use key-based auth.</span>
-                    </div>
-                  );
-                })}
-              </>
-            )}
+              <span className="text-[10px] bg-indigo-500/10 px-2 py-0.5 border border-indigo-500/20 text-indigo-500 rounded-full font-extrabold uppercase">
+                {Object.keys(openPortsMap).length} IPs
+              </span>
+            </div>
+
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50/50 dark:bg-slate-950/20 border-b border-slate-200 dark:border-slate-800/50">
+                    <th className="font-bold text-slate-400 uppercase tracking-wider py-3.5 px-6">IP Address</th>
+                    <th className="font-bold text-slate-400 uppercase tracking-wider py-3.5 px-6">Resource Host</th>
+                    <th className="font-bold text-slate-400 uppercase tracking-wider py-3.5 px-6 text-right">Open Ports</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/30">
+                  {Object.entries(openPortsMap).map(([ip, openPorts]) => {
+                    const srv = data.servers.find(s => s.ip === ip);
+                    const labelName = srv ? srv.server_name : "DNS Host / External IP";
+                    const projectLabel = srv ? srv.project : "Unmapped";
+                    
+                    return (
+                      <tr key={ip} className="hover:bg-slate-50/60 dark:hover:bg-slate-950/20 transition">
+                        <td className="py-3.5 px-6 font-bold font-mono text-indigo-650 dark:text-indigo-400">{ip}</td>
+                        <td className="py-3.5 px-6">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-bold text-slate-800 dark:text-slate-205">{labelName}</span>
+                            <span className="text-[10px] text-slate-400 font-semibold uppercase">{projectLabel}</span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-6 text-right">
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {openPorts.length > 0 ? (
+                              openPorts.map(p => {
+                                const isSensitive = [3306, 5432, 27017, 6379, 9200, 21, 23, 3389].includes(p);
+                                return (
+                                  <span 
+                                    key={p} 
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold border ${
+                                      isSensitive 
+                                        ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' 
+                                        : p === 22 
+                                        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' 
+                                        : 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20'
+                                    }`}
+                                  >
+                                    {p}
+                                  </span>
+                                );
+                              })
+                            ) : (
+                              <span className="text-slate-400 dark:text-slate-500 font-semibold italic text-[11px]">All closed</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-
-        {/* Detailed logs table */}
-        <div className="lg:col-span-2 glass-panel rounded-2xl border-slate-200 dark:border-slate-800 overflow-hidden">
-          <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-            <h3 className="text-sm font-bold">Port Audit Log details</h3>
-            <span className="font-bold text-[10px] bg-indigo-500/10 px-2 py-0.5 border border-indigo-500/20 text-indigo-550 rounded-full">
-              Network Scan logs
-            </span>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-100/50 dark:bg-slate-950/40 border-b border-slate-200 dark:border-slate-800/50">
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5">Target IP</th>
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5">Resource/Hostname</th>
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5">SSH (22)</th>
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5">HTTP (80)</th>
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5">HTTPS (443)</th>
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5">RDP (3389)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800/40">
-                {Object.entries(data.port_audit_results || {}).map(([ip, ports]) => {
-                  const srv = data.servers.find(s => s.ip === ip);
-                  const labelName = srv ? `${srv.server_name} (${srv.project})` : "Unmapped Target / DNS Host";
-                  
-                  return (
-                    <tr key={ip} className="hover:bg-slate-50 dark:hover:bg-slate-900/30">
-                      <td className="py-3 px-5 font-bold font-mono text-indigo-600 dark:text-indigo-400">{ip}</td>
-                      <td className="py-3 px-5 font-semibold text-slate-550">{labelName}</td>
-                      <td className="py-3 px-5">
-                        <span className={`px-2 py-0.5 rounded font-bold ${ports["22"] ? 'bg-amber-500/15 text-amber-505' : 'bg-slate-100 dark:bg-slate-900 text-slate-450 dark:text-slate-655 border border-slate-202 dark:border-slate-802'}`}>
-                          {ports["22"] ? "OPEN" : "closed"}
-                        </span>
-                      </td>
-                      <td className="py-3 px-5">
-                        <span className={`px-2 py-0.5 rounded font-bold ${ports["80"] ? 'bg-sky-500/15 text-sky-550 font-bold' : 'bg-slate-100 dark:bg-slate-900 text-slate-450 dark:text-slate-655 border border-slate-202 dark:border-slate-802'}`}>
-                          {ports["80"] ? "OPEN" : "closed"}
-                        </span>
-                      </td>
-                      <td className="py-3 px-5">
-                        <span className={`px-2 py-0.5 rounded font-bold ${ports["443"] ? 'bg-emerald-500/15 text-emerald-555 font-bold' : 'bg-slate-100 dark:bg-slate-900 text-slate-455 dark:text-slate-655 border border-slate-202 dark:border-slate-802'}`}>
-                          {ports["443"] ? "OPEN" : "closed"}
-                        </span>
-                      </td>
-                      <td className="py-3 px-5">
-                        <span className={`px-2 py-0.5 rounded font-bold ${ports["3389"] ? 'bg-rose-500/15 text-rose-500 animate-pulse font-bold' : 'bg-slate-100 dark:bg-slate-900 text-slate-455 dark:text-slate-655 border border-slate-202 dark:border-slate-802'}`}>
-                          {ports["3389"] ? "OPEN" : "closed"}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
       </div>
     </div>
   );

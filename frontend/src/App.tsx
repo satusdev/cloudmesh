@@ -8,16 +8,20 @@ import {
   Lock, 
   Unlock,
   DollarSign,
-  Search,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  LayoutDashboard,
+  Trash2,
+  Menu,
+  X
 } from 'lucide-react';
 import type { AuditData, MappingItem, DiffDetails } from './types';
 import { OverviewTab } from './components/OverviewTab';
 import { CostTab } from './components/CostTab';
-import { DomainsTab } from './components/DomainsTab';
+import { MappingsTab } from './components/MappingsTab';
 import { ComputeTab } from './components/ComputeTab';
 import { SecurityTab } from './components/SecurityTab';
+import { CleanupTab } from './components/CleanupTab';
 
 export default function App() {
   const [data, setData] = useState<AuditData | null>(null);
@@ -29,12 +33,12 @@ export default function App() {
       document.documentElement.classList.toggle('dark', savedTheme === 'dark');
       return savedTheme;
     }
-    // Default is dark mode
     document.documentElement.classList.add('dark');
     return 'dark';
   });
 
   const [refreshing, setRefreshing] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Authentication State
   const [passcode, setPasscode] = useState('');
@@ -71,23 +75,7 @@ export default function App() {
     setPasscode('');
   };
 
-  // Search & Filter State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'matched' | 'unmatched'>('all');
-  const [proxyFilter, setProxyFilter] = useState<'all' | 'proxied' | 'dns-only'>('all');
-  const [dnsTypeFilter, setDnsTypeFilter] = useState<'all' | 'A' | 'AAAA'>('all');
-  const [wildcardFilter, setWildcardFilter] = useState<'all' | 'wildcard' | 'standard'>('all');
-  const [expiryFilter, setExpiryFilter] = useState<'all' | 'expired' | 'expiring-soon' | 'healthy'>('all');
-  const [selectedProject, setSelectedProject] = useState<string>('all');
-  const [costRange, setCostRange] = useState<number>(100); // Max €100 cost filter
-
-  const [activePage, setActivePage] = useState<'overview' | 'cost' | 'domains' | 'compute' | 'security'>('overview');
-  const [domainSortKey, setDomainSortKey] = useState<'name' | 'expiry' | 'cost' | 'records'>('name');
-  const [domainSortOrder, setDomainSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [dnsSortKey, setDnsSortKey] = useState<'subdomain' | 'latency' | 'price'>('subdomain');
-  const [dnsSortOrder, setDnsSortOrder] = useState<'asc' | 'desc'>('asc');
-
-  const [collapsedDomains, setCollapsedDomains] = useState<Record<string, boolean>>({});
+  const [activePage, setActivePage] = useState<'overview' | 'mappings' | 'compute' | 'cost' | 'security' | 'cleanup'>('overview');
   
   interface SelectedNode {
     type: string;
@@ -99,17 +87,42 @@ export default function App() {
   const [showTopology, setShowTopology] = useState(false);
 
   // Custom Comparison Snapshot State
-  const [selectedSnapshotFile, setSelectedSnapshotFile] = useState<string>('none');
+  const [selectedSnapshotFile, setSelectedSnapshotFile] = useState<string>('');
   const [comparisonDiff, setComparisonDiff] = useState<DiffDetails | null>(null);
   const [comparingError, setComparingError] = useState<string | null>(null);
 
+  const fetchData = async () => {
+    try {
+      const response = await fetch('/data.json');
+      if (!response.ok) {
+        throw new Error('Please run the python script first to generate the initial audit report (data.json).');
+      }
+      const jsonData: AuditData = await response.json();
+      setData(jsonData);
+      setError(null);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Failed to load audit data.';
+      setError(errMsg);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchData();
+  };
+
   // Load custom comparison on dropdown selection
   useEffect(() => {
-    if (selectedSnapshotFile === 'none' || !data) {
-      const timer = setTimeout(() => {
-        setComparisonDiff(null);
-      }, 0);
-      return () => clearTimeout(timer);
+    if (!selectedSnapshotFile || !data) {
+      setComparisonDiff(null);
+      return;
     }
     
     const loadSnapshotAndCompare = async () => {
@@ -204,163 +217,14 @@ export default function App() {
     document.documentElement.classList.toggle('dark', nextTheme === 'dark');
   };
 
-  const fetchData = async () => {
-    try {
-      const response = await fetch('/data.json');
-      if (!response.ok) {
-        throw new Error('Please run the python script first to generate the initial audit report (data.json).');
-      }
-      const jsonData: AuditData = await response.json();
-      setData(jsonData);
-      
-      const domains = Object.keys(jsonData.mapping_by_domain).sort();
-      const initialCollapsed: Record<string, boolean> = {};
-      domains.forEach((domain, idx) => {
-        initialCollapsed[domain] = idx >= 3;
-      });
-      setCollapsedDomains(initialCollapsed);
-      setError(null);
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Failed to load audit data.';
-      setError(errMsg);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchData();
-  };
-
-  // Extract unique projects for filters
-  const projectList = useMemo(() => {
-    if (!data) return [];
-    const projects = new Set<string>();
-    data.servers.forEach(s => projects.add(s.project));
-    Object.values(data.mapping_by_domain).flat().forEach(m => {
-      if (m.project && m.project !== 'N/A') projects.add(m.project);
-    });
-    return Array.from(projects).sort();
-  }, [data]);
-
-  // Filters calculation
-  const filteredMapping = useMemo(() => {
-    if (!data) return {};
-    const result: Record<string, MappingItem[]> = {};
-
-    Object.entries(data.mapping_by_domain).forEach(([domain, records]) => {
-      const expiration = data.domain_expirations[domain];
-      const daysLeft = expiration?.days_left;
-
-      // Expiry filter check
-      let matchesExpiry = true;
-      if (expiryFilter === 'expired') {
-        matchesExpiry = daysLeft !== null && daysLeft < 0;
-      } else if (expiryFilter === 'expiring-soon') {
-        matchesExpiry = daysLeft !== null && daysLeft >= 0 && daysLeft <= 30;
-      } else if (expiryFilter === 'healthy') {
-        matchesExpiry = daysLeft === null || daysLeft > 30;
-      }
-
-      const matchedRecords = records.filter(record => {
-        const matchesSearch = 
-          domain.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          record.subdomain.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          record.ip.includes(searchQuery) ||
-          record.server_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          record.project.toLowerCase().includes(searchQuery.toLowerCase());
-
-        const isMatched = record.server_name !== 'No match';
-        const matchesTab = 
-          activeTab === 'all' ||
-          (activeTab === 'matched' && isMatched) ||
-          (activeTab === 'unmatched' && !isMatched);
-
-        const matchesProxy = 
-          proxyFilter === 'all' ||
-          (proxyFilter === 'proxied' && record.proxied) ||
-          (proxyFilter === 'dns-only' && !record.proxied);
-
-        const matchesDnsType = 
-          dnsTypeFilter === 'all' ||
-          record.dns_type === dnsTypeFilter;
-
-        const isWildcard = record.subdomain.startsWith('*');
-        const matchesWildcard = 
-          wildcardFilter === 'all' ||
-          (wildcardFilter === 'wildcard' && isWildcard) ||
-          (wildcardFilter === 'standard' && !isWildcard);
-
-        const matchesProject = 
-          selectedProject === 'all' || 
-          record.project === selectedProject;
-
-        const matchesCost = 
-          record.price_monthly <= costRange;
-
-        return matchesSearch && matchesTab && matchesProxy && matchesDnsType && matchesWildcard && matchesProject && matchesCost;
-      });
-
-      if (matchedRecords.length > 0 && matchesExpiry) {
-        result[domain] = matchedRecords;
-      }
-    });
-
-    return result;
-  }, [data, searchQuery, activeTab, proxyFilter, dnsTypeFilter, wildcardFilter, expiryFilter, selectedProject, costRange]);
-
-  // Compute live filtered stats
-  const filteredStats = useMemo(() => {
-    const flatRecords = Object.values(filteredMapping).flat();
-    const matchedCount = flatRecords.filter(r => r.server_name !== 'No match').length;
-    const totalSpend = flatRecords
-      .filter(r => r.server_name !== 'No match')
-      .reduce((sum, r) => sum + r.price_monthly, 0);
-
-    return {
-      recordsCount: flatRecords.length,
-      matchedCount,
-      unmatchedCount: flatRecords.length - matchedCount,
-      totalSpend
-    };
-  }, [filteredMapping]);
-
-  // Calculate project cost distribution
-  const projectCosts = useMemo(() => {
-    if (!data) return [];
-    const costs: Record<string, { total: number; count: number }> = {};
-    data.servers.forEach(server => {
-      if (!costs[server.project]) {
-        costs[server.project] = { total: 0, count: 0 };
-      }
-      costs[server.project].total += server.price_monthly;
-      costs[server.project].count += 1;
-    });
-    return Object.entries(costs).sort((a, b) => b[1].total - a[1].total);
-  }, [data]);
-
-  // Expiring domains <= 30 days
-  const expiringDomains = useMemo(() => {
-    if (!data) return [];
-    return Object.entries(data.domain_expirations)
-      .filter(([, info]) => info.days_left !== null && info.days_left <= 30)
-      .sort((a, b) => (a[1].days_left ?? 999) - (b[1].days_left ?? 999));
-  }, [data]);
-
   // Sparkline Chart SVG Path Generator
   const generateSparkline = (points: number[]) => {
     if (points.length < 2) return '';
     const max = Math.max(...points, 1);
     const min = Math.min(...points, 0);
     const range = max - min || 1;
-    const width = 120;
-    const height = 30;
+    const width = 100;
+    const height = 25;
 
     return points.map((val, idx) => {
       const x = (idx / (points.length - 1)) * width;
@@ -372,18 +236,16 @@ export default function App() {
   // Node Topology calculation
   const topologyData = useMemo(() => {
     if (!data) return null;
-    const flatRecords = Object.entries(filteredMapping).flatMap(([domain, items]) => 
+    const flatRecords = Object.entries(data.mapping_by_domain).flatMap(([domain, items]) => 
       items.map(item => ({ ...item, domain }))
     );
 
-    // Group items into columns
-    const domains = Array.from(new Set(flatRecords.map(r => r.domain))).sort().slice(0, 8); // limit for visual sanity
+    const domains = Array.from(new Set(flatRecords.map(r => r.domain))).sort().slice(0, 8); 
     const records = flatRecords.filter(r => domains.includes(r.domain)).slice(0, 15);
     const ips = Array.from(new Set(records.map(r => r.ip))).sort();
     const servers = Array.from(new Set(records.map(r => r.server_name))).sort();
     const projects = Array.from(new Set(records.filter(r => r.project !== 'N/A').map(r => r.project))).sort();
 
-    // Map keys to layout coordinates
     const width = 780;
     const height = 400;
 
@@ -418,16 +280,13 @@ export default function App() {
     });
     const projectNodes = layoutColumn(projects, 4);
 
-    // Build connections/edges
     const edges: { x1: number; y1: number; x2: number; y2: number; isOrphan: boolean }[] = [];
 
     recordNodes.forEach(rn => {
-      // Connect Domain -> Record
       const dNode = domainNodes.find(dn => dn.id === rn.parentDomain);
       if (dNode) {
         edges.push({ x1: dNode.x, y1: dNode.y, x2: rn.x, y2: rn.y, isOrphan: rn.label === 'No match' });
       }
-      // Connect Record -> IP
       const ipNode = ipNodes.find(ipn => ipn.id === rn.ip);
       if (ipNode) {
         edges.push({ x1: rn.x, y1: rn.y, x2: ipNode.x, y2: ipNode.y, isOrphan: rn.label === 'No match' });
@@ -435,13 +294,11 @@ export default function App() {
     });
 
     records.forEach(r => {
-      // Connect IP -> Server
       const ipNode = ipNodes.find(ipn => ipn.id === r.ip);
       const sNode = serverNodes.find(sn => sn.id === r.server_name);
       if (ipNode && sNode) {
         edges.push({ x1: ipNode.x, y1: ipNode.y, x2: sNode.x, y2: sNode.y, isOrphan: r.server_name === 'No match' });
       }
-      // Connect Server -> Project
       const projNode = projectNodes.find(pn => pn.id === r.project);
       if (sNode && projNode && r.project !== 'N/A') {
         edges.push({ x1: sNode.x, y1: sNode.y, x2: projNode.x, y2: projNode.y, isOrphan: false });
@@ -458,8 +315,23 @@ export default function App() {
       },
       edges
     };
-  }, [filteredMapping, data]);
+  }, [data]);
 
+  // Project billing summary
+  const projectCosts = useMemo(() => {
+    if (!data) return [];
+    const costs: Record<string, { total: number; count: number }> = {};
+    data.servers.forEach(server => {
+      if (!costs[server.project]) {
+        costs[server.project] = { total: 0, count: 0 };
+      }
+      costs[server.project].total += server.price_monthly;
+      costs[server.project].count += 1;
+    });
+    return Object.entries(costs).sort((a, b) => b[1].total - a[1].total);
+  }, [data]);
+
+  // Location billing summary
   const locationCosts = useMemo(() => {
     if (!data) return [];
     const costs: Record<string, { total: number; count: number }> = {};
@@ -472,6 +344,7 @@ export default function App() {
     return Object.entries(costs).sort((a, b) => b[1].total - a[1].total);
   }, [data]);
 
+  // Type billing summary
   const typeCosts = useMemo(() => {
     if (!data) return [];
     const costs: Record<string, { total: number; count: number }> = {};
@@ -484,6 +357,7 @@ export default function App() {
     return Object.entries(costs).sort((a, b) => b[1].total - a[1].total);
   }, [data]);
 
+  // Hardware specs summary
   const computeStats = useMemo(() => {
     if (!data) return { cores: 0, memory: 0, disk: 0, serversCount: 0 };
     let cores = 0;
@@ -503,6 +377,7 @@ export default function App() {
     return { cores, memory, disk, serversCount };
   }, [data]);
 
+  // OS Distribution breakdown
   const osBreakdown = useMemo(() => {
     if (!data) return [];
     const osCounts: Record<string, number> = {};
@@ -525,88 +400,43 @@ export default function App() {
     return Object.entries(osCounts).sort((a, b) => b[1] - a[1]);
   }, [data]);
 
-  // Sort domains dynamically
-  const sortedDomains = useMemo(() => {
-    const entries = Object.entries(filteredMapping);
-    entries.sort(([domainA, recordsA], [domainB, recordsB]) => {
-      let val = 0;
-      if (domainSortKey === 'name') {
-        val = domainA.localeCompare(domainB);
-      } else if (domainSortKey === 'expiry') {
-        const daysA = data?.domain_expirations[domainA]?.days_left ?? 999999;
-        const daysB = data?.domain_expirations[domainB]?.days_left ?? 999999;
-        val = daysA - daysB;
-      } else if (domainSortKey === 'cost') {
-        const costA = recordsA.reduce((sum, r) => sum + r.price_monthly, 0);
-        const costB = recordsB.reduce((sum, r) => sum + r.price_monthly, 0);
-        val = costB - costA; // Highest cost first
-      } else if (domainSortKey === 'records') {
-        val = recordsB.length - recordsA.length; // Most records first
-      }
-      return domainSortOrder === 'asc' ? val : -val;
-    });
-    return entries;
-  }, [filteredMapping, domainSortKey, domainSortOrder, data]);
-
-  const getSortedRecords = (records: MappingItem[]) => {
-    return records.slice().sort((a, b) => {
-      let comparison = 0;
-      if (dnsSortKey === 'subdomain') {
-        comparison = a.subdomain.localeCompare(b.subdomain);
-      } else if (dnsSortKey === 'latency') {
-        const latA = a.dns_latency ?? 999999;
-        const latB = b.dns_latency ?? 999999;
-        comparison = latA - latB;
-      } else if (dnsSortKey === 'price') {
-        comparison = a.price_monthly - b.price_monthly;
-      }
-      return dnsSortOrder === 'asc' ? comparison : -comparison;
-    });
-  };
-
-  const toggleDomain = (domain: string) => {
-    setCollapsedDomains(prev => ({
-      ...prev,
-      [domain]: !prev[domain]
-    }));
-  };
-
-  const setAllCollapse = (collapsed: boolean) => {
-    if (!data) return;
-    const updated: Record<string, boolean> = {};
-    Object.keys(data.mapping_by_domain).forEach(domain => {
-      updated[domain] = collapsed;
-    });
-    setCollapsedDomains(updated);
-  };
+  // Expiration of domains list sorted by urgency
+  const expiringDomains = useMemo(() => {
+    if (!data) return [];
+    return Object.entries(data.domain_expirations)
+      .sort((a, b) => {
+        const daysA = a[1].days_left ?? 999999;
+        const daysB = b[1].days_left ?? 999999;
+        return daysA - daysB; 
+      });
+  }, [data]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-100 p-4">
-        <div className="relative">
-          <div className="h-16 w-16 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin"></div>
-          <Server className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400 h-6 w-6" />
+      <div className={`min-h-screen transition-colors duration-250 flex flex-col items-center justify-center p-4 ${theme === 'dark' ? 'bg-[#030712] text-slate-100' : 'bg-[#f8fafc] text-slate-950'}`}>
+        <div className="flex flex-col items-center space-y-4">
+          <RefreshCw className="h-10 w-10 text-indigo-550 animate-spin" />
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">Loading Auditor Dashboard...</h2>
         </div>
-        <p className="mt-4 text-slate-400 font-medium animate-pulse">Running CloudMesh Auditor Engine...</p>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-slate-955 flex flex-col items-center justify-center text-slate-100 p-4">
-        <div className="max-w-md w-full bg-slate-900 border border-red-500/20 rounded-2xl p-6 text-center shadow-xl">
-          <AlertTriangle className="mx-auto text-red-500 h-12 w-12 mb-4" />
-          <h2 className="text-xl font-bold text-slate-100 mb-2">Audit Session Inactive</h2>
+      <div className={`min-h-screen transition-colors duration-250 flex flex-col items-center justify-center p-4 ${theme === 'dark' ? 'bg-[#030712] text-slate-100' : 'bg-[#f8fafc] text-slate-950'}`}>
+        <div className="max-w-md w-full bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-850 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center">
+          <AlertTriangle className="h-12 w-12 text-rose-500 mb-4 animate-pulse" />
+          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">Audit Session Inactive</h2>
           <p className="text-slate-400 text-sm mb-6 leading-relaxed">
             {error || 'No audit records were parsed from cache or cloud credentials.'}
           </p>
-          <div className="bg-slate-950 rounded-lg p-3 text-left font-mono text-xs text-indigo-400 mb-6 border border-slate-800">
-            <span className="text-slate-500">$</span> python script.py
+          <div className="bg-slate-955 rounded-xl p-3.5 text-left font-mono text-xs text-indigo-400 mb-6 border border-slate-250 dark:border-slate-800 w-full">
+            <span className="text-slate-500">$</span> ./venv/bin/python3 script.py
           </div>
           <button 
             onClick={handleRefresh}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg py-2 px-4 font-semibold text-sm transition duration-200 flex items-center justify-center gap-2"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-3 px-4 font-bold text-sm transition duration-200 flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-indigo-600/10"
           >
             <RefreshCw className="h-4 w-4" />
             Reload Credentials
@@ -622,10 +452,10 @@ export default function App() {
         <div className="absolute top-4 right-4 flex items-center gap-2">
           <button 
             onClick={toggleTheme}
-            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-605 dark:text-slate-305 p-2 rounded-xl transition duration-200 cursor-pointer"
+            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 p-2 rounded-xl transition duration-200 cursor-pointer"
             title="Toggle Theme"
           >
-            {theme === 'dark' ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5 text-slate-808" />}
+            {theme === 'dark' ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5 text-slate-800" />}
           </button>
         </div>
         
@@ -661,7 +491,7 @@ export default function App() {
               Unlock Dashboard
             </button>
           </form>
-          <p className="text-[10px] text-slate-400 dark:text-slate-505">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">
             Protected by CloudMesh environment configuration passcode.
           </p>
         </div>
@@ -669,217 +499,234 @@ export default function App() {
     );
   }
 
+  const criticalAlertsCount = (data.security_alerts || []).filter(a => a.severity === 'critical' || a.severity === 'high').length;
+  const cleanupFlagsCount = (data.cleanup_flags || []).length;
+
+  const navigationItems = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'mappings', label: 'DNS & Mappings', icon: Layers },
+    { id: 'compute', label: 'Compute Resources', icon: Server },
+    { id: 'cost', label: 'Financial Auditing', icon: DollarSign },
+    { 
+      id: 'security', 
+      label: 'Security & Ports', 
+      icon: ShieldCheck,
+      badge: criticalAlertsCount > 0 ? { count: criticalAlertsCount, type: 'critical' } : null
+    },
+    { 
+      id: 'cleanup', 
+      label: 'DNS Cleanup', 
+      icon: Trash2,
+      badge: cleanupFlagsCount > 0 ? { count: cleanupFlagsCount, type: 'warning' } : null
+    },
+  ];
+
   return (
-    <div className={`min-h-screen transition-colors duration-250 ${theme === 'dark' ? 'bg-[#030712] text-slate-100' : 'bg-[#f8fafc] text-slate-950'}`}>
+    <div className={`min-h-screen flex transition-colors duration-250 ${theme === 'dark' ? 'bg-[#030712] text-slate-100' : 'bg-[#f8fafc] text-slate-900'}`}>
       
-      {/* Top Banner */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        
-        {/* Header bar */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6 mb-6 border-slate-200 dark:border-slate-800">
+      {/* Sidebar Layout */}
+      <aside className="w-68 bg-white dark:bg-[#0f172a] border-r border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shrink-0 hidden lg:flex flex-col justify-between p-6">
+        <div className="space-y-8">
+          {/* Logo Header */}
           <div className="flex items-center gap-3">
-            <div className="bg-indigo-600/10 p-2.5 rounded-2xl border border-indigo-500/20 text-indigo-500">
-              <Layers className="h-8 w-8" />
+            <div className="bg-indigo-600/10 p-2.5 rounded-2xl border border-indigo-500/20 text-indigo-650 dark:text-indigo-400">
+              <Layers className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-500 via-indigo-400 to-indigo-600 bg-clip-text text-transparent">
-                CloudMesh Auditor
+              <h1 className="text-lg font-black tracking-tight bg-gradient-to-r from-indigo-600 to-indigo-400 bg-clip-text text-transparent">
+                CloudMesh
               </h1>
-              <p className="text-xs md:text-sm mt-0.5 font-medium flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-                Infrastructure Audit & Topology Maps
-                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-slate-500 font-bold ml-1">Active</span>
-              </p>
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Auditor Engine</p>
             </div>
           </div>
-          
-          <div className="flex items-center gap-4 self-end md:self-center">
-            <div className="text-right">
-              <span className="text-[10px] tracking-wider font-semibold text-slate-500 block">SCAN TIMESTAMP</span>
-              <span className="text-sm font-mono font-bold text-slate-655 dark:text-slate-300">{data.timestamp}</span>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {data.passcode_hash && (
-                <button 
-                  onClick={handleLock}
-                  className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-rose-500 p-2 rounded-xl transition duration-200 cursor-pointer"
-                  title="Lock Dashboard"
+
+          {/* Nav Items */}
+          <nav className="space-y-1.5">
+            {navigationItems.map(item => {
+              const Icon = item.icon;
+              const isActive = activePage === item.id;
+              
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActivePage(item.id as any)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition duration-200 cursor-pointer ${
+                    isActive 
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' 
+                      : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400'
+                  }`}
                 >
-                  <Lock className="h-5 w-5" />
+                  <div className="flex items-center gap-3">
+                    <Icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </div>
+
+                  {item.badge && (
+                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md ${
+                      item.badge.type === 'critical' 
+                        ? 'bg-rose-500 text-white dark:bg-rose-500/20 dark:text-rose-400' 
+                        : 'bg-amber-500 text-white dark:bg-amber-500/20 dark:text-amber-400'
+                    }`}>
+                      {item.badge.count}
+                    </span>
+                  )}
                 </button>
-              )}
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Footer Utilities */}
+        <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800/80">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Report Timestamp</span>
+            <span className="text-[11px] font-mono font-bold text-slate-655 dark:text-slate-300">{data.timestamp}</span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
               <button 
                 onClick={toggleTheme}
-                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-605 dark:text-slate-305 p-2 rounded-xl transition duration-200 cursor-pointer"
+                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800/60 text-slate-600 dark:text-slate-300 p-2 rounded-xl transition duration-200 cursor-pointer"
                 title="Toggle Theme"
               >
-                {theme === 'dark' ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5 text-slate-805" />}
+                {theme === 'dark' ? <Sun className="h-4.5 w-4.5 text-amber-400" /> : <Moon className="h-4.5 w-4.5" />}
               </button>
               <button 
                 onClick={handleRefresh}
                 disabled={refreshing}
-                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-605 dark:text-slate-305 p-2 rounded-xl transition duration-200 disabled:opacity-50 cursor-pointer"
+                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800/60 text-slate-600 dark:text-slate-300 p-2 rounded-xl transition duration-200 disabled:opacity-50 cursor-pointer"
                 title="Refresh mapping data"
               >
-                <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4.5 w-4.5 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
             </div>
+
+            {data.passcode_hash && (
+              <button 
+                onClick={handleLock}
+                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-205 dark:border-slate-800/60 text-rose-500 p-2 rounded-xl transition duration-200 cursor-pointer"
+                title="Lock Session"
+              >
+                <Lock className="h-4.5 w-4.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      {/* Mobile Header Bar */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="lg:hidden flex items-center justify-between bg-white dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Layers className="h-5 w-5 text-indigo-500" />
+            <span className="font-extrabold text-sm tracking-tight">CloudMesh</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={toggleTheme}
+              className="text-slate-500 dark:text-slate-400 p-1.5"
+            >
+              {theme === 'dark' ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
+            </button>
+            <button 
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="text-slate-500 dark:text-slate-400 p-1.5"
+            >
+              {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
           </div>
         </header>
 
-        {/* Navigation Tabs Navbar */}
-        <nav className="flex flex-wrap items-center gap-2 border-b border-slate-205 dark:border-slate-805 pb-4 mb-6">
-          <button
-            onClick={() => setActivePage('overview')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition duration-150 border cursor-pointer ${
-              activePage === 'overview'
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/15'
-                : 'bg-slate-105 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-400'
-            }`}
-          >
-            <Layers className="h-4 w-4" />
-            Overview & Map
-          </button>
-          <button
-            onClick={() => setActivePage('cost')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition duration-150 border cursor-pointer ${
-              activePage === 'cost'
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/15'
-                : 'bg-slate-105 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-400'
-            }`}
-          >
-            <DollarSign className="h-4 w-4" />
-            Cost & Billing
-          </button>
-          <button
-            onClick={() => setActivePage('domains')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition duration-150 border cursor-pointer ${
-              activePage === 'domains'
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/15'
-                : 'bg-slate-105 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-400'
-            }`}
-          >
-            <Search className="h-4 w-4" />
-            Domains & WHOIS
-          </button>
-          <button
-            onClick={() => setActivePage('compute')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition duration-150 border cursor-pointer ${
-              activePage === 'compute'
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/15'
-                : 'bg-slate-105 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-400'
-            }`}
-          >
-            <Server className="h-4 w-4" />
-            Compute Resources
-          </button>
-          <button
-            onClick={() => setActivePage('security')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition duration-150 border cursor-pointer ${
-              activePage === 'security'
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/15'
-                : 'bg-slate-105 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-400'
-            }`}
-          >
-            <ShieldCheck className="h-4 w-4" />
-            Security & Ports
-          </button>
-        </nav>
+        {/* Mobile Nav Dropdown */}
+        {isMobileMenuOpen && (
+          <nav className="lg:hidden bg-white dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800 px-6 py-4 space-y-1 animate-slide-down">
+            {navigationItems.map(item => {
+              const Icon = item.icon;
+              const isActive = activePage === item.id;
+              
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActivePage(item.id as any);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition duration-200 cursor-pointer ${
+                    isActive 
+                      ? 'bg-indigo-650 text-white' 
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/40'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </div>
 
-        {/* Overview Tab Content */}
-        {activePage === 'overview' && (
-          <OverviewTab
-            data={data}
-            theme={theme}
-            showTopology={showTopology}
-            setShowTopology={setShowTopology}
-            topologyData={topologyData}
-            selectedNodeDetails={selectedNodeDetails}
-            setSelectedNodeDetails={setSelectedNodeDetails}
-            projectCosts={projectCosts}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            filteredStats={filteredStats}
-            proxyFilter={proxyFilter}
-            setProxyFilter={setProxyFilter}
-            dnsTypeFilter={dnsTypeFilter}
-            setDnsTypeFilter={setDnsTypeFilter}
-            wildcardFilter={wildcardFilter}
-            setWildcardFilter={setWildcardFilter}
-            expiryFilter={expiryFilter}
-            setExpiryFilter={setExpiryFilter}
-            selectedProject={selectedProject}
-            setSelectedProject={setSelectedProject}
-            projectList={projectList}
-            costRange={costRange}
-            setCostRange={setCostRange}
-            domainSortKey={domainSortKey}
-            setDomainSortKey={setDomainSortKey}
-            domainSortOrder={domainSortOrder}
-            setDomainSortOrder={setDomainSortOrder}
-            dnsSortKey={dnsSortKey}
-            setDnsSortKey={setDnsSortKey}
-            dnsSortOrder={dnsSortOrder}
-            setDnsSortOrder={setDnsSortOrder}
-            sortedDomains={sortedDomains}
-            collapsedDomains={collapsedDomains}
-            toggleDomain={toggleDomain}
-            setAllCollapse={setAllCollapse}
-            selectedSnapshotFile={selectedSnapshotFile}
-            setSelectedSnapshotFile={setSelectedSnapshotFile}
-            comparingError={comparingError}
-            comparisonDiff={comparisonDiff}
-            expiringDomains={expiringDomains}
-            generateSparkline={generateSparkline}
-            getSortedRecords={getSortedRecords}
-          />
+                  {item.badge && (
+                    <span className="bg-rose-500 text-white dark:bg-rose-500/20 dark:text-rose-400 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md">
+                      {item.badge.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
         )}
 
-        {/* Cost Tab Content */}
-        {activePage === 'cost' && (
-          <CostTab
-            data={data}
-            projectCosts={projectCosts}
-            locationCosts={locationCosts}
-            typeCosts={typeCosts}
-          />
-        )}
+        {/* Main Content Area */}
+        <main className="flex-1 p-6 md:p-8 overflow-y-auto">
+          {activePage === 'overview' && (
+            <OverviewTab
+              data={data}
+              theme={theme}
+              showTopology={showTopology}
+              setShowTopology={setShowTopology}
+              topologyData={topologyData}
+              selectedNodeDetails={selectedNodeDetails}
+              setSelectedNodeDetails={setSelectedNodeDetails}
+              projectCosts={projectCosts}
+              selectedSnapshotFile={selectedSnapshotFile}
+              setSelectedSnapshotFile={setSelectedSnapshotFile}
+              comparingError={comparingError}
+              comparisonDiff={comparisonDiff}
+              expiringDomains={expiringDomains}
+              generateSparkline={generateSparkline}
+            />
+          )}
 
-        {/* Domains Tab Content */}
-        {activePage === 'domains' && (
-          <DomainsTab
-            data={data}
-            expiryFilter={expiryFilter}
-            setExpiryFilter={setExpiryFilter}
-            domainSortKey={domainSortKey}
-            setDomainSortKey={setDomainSortKey}
-            domainSortOrder={domainSortOrder}
-            setDomainSortOrder={setDomainSortOrder}
-            sortedDomains={sortedDomains}
-          />
-        )}
+          {activePage === 'mappings' && (
+            <MappingsTab data={data} />
+          )}
 
-        {/* Compute Tab Content */}
-        {activePage === 'compute' && (
-          <ComputeTab
-            data={data}
-            computeStats={computeStats}
-            osBreakdown={osBreakdown}
-          />
-        )}
+          {activePage === 'compute' && (
+            <ComputeTab
+              data={data}
+              computeStats={computeStats}
+              osBreakdown={osBreakdown}
+            />
+          )}
 
-        {/* Security Tab Content */}
-        {activePage === 'security' && (
-          <SecurityTab
-            data={data}
-          />
-        )}
+          {activePage === 'cost' && (
+            <CostTab
+              data={data}
+              projectCosts={projectCosts}
+              locationCosts={locationCosts}
+              typeCosts={typeCosts}
+            />
+          )}
 
-        {/* Footer */}
-        <footer className="mt-16 border-t pt-8 pb-12 text-center text-slate-500 text-xs border-slate-200 dark:border-slate-900">
+          {activePage === 'security' && (
+            <SecurityTab data={data} />
+          )}
+
+          {activePage === 'cleanup' && (
+            <CleanupTab cleanupFlags={data.cleanup_flags || []} />
+          )}
+        </main>
+
+        <footer className="border-t border-slate-200 dark:border-slate-900 py-6 text-center text-[10px] font-semibold text-slate-400 dark:text-slate-500">
           <p>CloudMesh Auditor — Running production-grade network mapping audits.</p>
           <p className="mt-1">Generated report is strictly confidential and restricted to internal operations.</p>
         </footer>

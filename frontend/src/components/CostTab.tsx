@@ -140,22 +140,23 @@ export const CostTab: React.FC<CostTabProps> = ({
             </h3>
             <div className="space-y-3">
               {data.recommendations && data.recommendations.filter(r => r.cost_impact > 0).length > 0 ? (
-                data.recommendations
+                [...data.recommendations]
                   .filter(r => r.cost_impact > 0)
+                  .sort((a, b) => b.cost_impact - a.cost_impact)
                   .map((rec, idx) => (
                     <div key={idx} className="bg-amber-500/5 border border-amber-500/15 p-4 rounded-xl space-y-2">
                       <div className="flex justify-between font-bold text-slate-800 dark:text-slate-200">
                         <span className="capitalize">{rec.resource_type.replace('_', ' ')}: {rec.resource_name}</span>
-                        <span className="text-amber-550">Monthly waste: €{rec.cost_impact.toFixed(2)}</span>
+                        <span className="text-amber-500">Monthly waste: €{rec.cost_impact.toFixed(2)}</span>
                       </div>
-                      <p className="text-slate-605 dark:text-slate-405 font-medium">{rec.description}</p>
-                      <div className="bg-slate-100 dark:bg-slate-950/80 p-2.5 rounded border border-slate-202 dark:border-slate-852 font-semibold text-slate-705 dark:text-indigo-400 mt-1">
+                      <p className="text-slate-655 dark:text-slate-350 font-medium">{rec.description}</p>
+                      <div className="bg-slate-100 dark:bg-slate-950/80 p-2.5 rounded border border-slate-202 dark:border-slate-852 font-semibold text-slate-700 dark:text-indigo-400 mt-1">
                         💡 Recommendation: {rec.suggestion}
                       </div>
                     </div>
                   ))
               ) : (
-                <p className="text-slate-505 text-xs text-center py-4">No waste detected! All active Hetzner resources are currently matched to active domains.</p>
+                <p className="text-slate-500 text-xs text-center py-4">No waste detected! All active Hetzner resources are currently matched to active domains.</p>
               )}
             </div>
           </div>

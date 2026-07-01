@@ -87,9 +87,11 @@ def run_audit():
         hetzner_projects = get_hetzner_projects()
         pushgateway_url = get_pushgateway_url()
 
-        mapping_by_domain, unique_domains, total_a_records, matched_server_ips, unmatched_ips, ip_to_server, unmapped_servers, diff, recommendations, port_audit_results = process_servers_and_domains(
-            cloudflare_token, hetzner_projects, metrics
-        )
+        (
+            mapping_by_domain, unique_domains, total_a_records, matched_server_ips, unmatched_ips, 
+            ip_to_server, unmapped_servers, diff, recommendations, port_audit_results, 
+            security_alerts, cleanup_flags
+        ) = process_servers_and_domains(cloudflare_token, hetzner_projects, metrics)
 
         # Generate premium interactive dashboard and print-optimized report
         html_dashboard = generate_html_dashboard(mapping_by_domain, unique_domains, total_a_records, matched_server_ips, ip_to_server)
@@ -108,7 +110,9 @@ def run_audit():
             unmapped_servers,
             diff,
             recommendations,
-            port_audit_results
+            port_audit_results,
+            security_alerts,
+            cleanup_flags
         )
 
         # Dispatch Slack and Google Chat notifications

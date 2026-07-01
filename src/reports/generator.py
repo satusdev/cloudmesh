@@ -678,7 +678,7 @@ def generate_print_html(mapping_by_domain, unique_domains, total_a_records, matc
     html += "</tbody></table>"
     return html
 
-def save_reports(html_dashboard, html_print, timestamp, mapping_by_domain, unique_domains, total_a_records, matched_server_ips, ip_to_server, unmapped_servers, diff, recommendations, port_audit_results):
+def save_reports(html_dashboard, html_print, timestamp, mapping_by_domain, unique_domains, total_a_records, matched_server_ips, ip_to_server, unmapped_servers, diff, recommendations, port_audit_results, security_alerts, cleanup_flags):
     os.makedirs('reports', exist_ok=True)
     snapshots_dir = os.path.join('reports', 'snapshots')
     os.makedirs(snapshots_dir, exist_ok=True)
@@ -715,6 +715,8 @@ def save_reports(html_dashboard, html_print, timestamp, mapping_by_domain, uniqu
         "unmapped_servers": unmapped_servers,
         "recommendations": recommendations,
         "port_audit_results": port_audit_results,
+        "security_alerts": security_alerts,
+        "cleanup_flags": cleanup_flags,
         "passcode_hash": get_dashboard_password_hash()
     }
 
@@ -835,6 +837,8 @@ def save_reports(html_dashboard, html_print, timestamp, mapping_by_domain, uniqu
         "history_trends": history_trends,
         "recommendations": recommendations,
         "port_audit_results": port_audit_results,
+        "security_alerts": security_alerts,
+        "cleanup_flags": cleanup_flags,
         "snapshots_list": snapshots_list,
         "passcode_hash": get_dashboard_password_hash()
     }

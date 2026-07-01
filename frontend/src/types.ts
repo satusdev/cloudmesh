@@ -61,6 +61,11 @@ export interface ServerDetails {
   // Floating IP Details
   fip_type?: string;
   assigned_server?: string | null;
+
+  // Security checks fields
+  firewalls?: any[];
+  ssh_keys?: any[];
+  backup_window?: string | null;
 }
 
 export interface TrendPoint {
@@ -96,6 +101,31 @@ export interface Recommendation {
   suggestion: string;
 }
 
+export interface SecurityAlert {
+  id: string;
+  type: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  resource_name: string;
+  resource_type: 'server' | 'load_balancer' | 'dns_record';
+  ip: string;
+  project: string;
+  description: string;
+  suggestion: string;
+}
+
+export interface CleanupFlag {
+  id: string;
+  domain: string;
+  subdomain: string;
+  dns_type: string;
+  ip: string;
+  flag_type: 'dangling_dns' | 'dead_target' | 'private_ip' | 'resolution_error';
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  reason: string;
+  description: string;
+  suggestion: string;
+}
+
 export interface SnapshotFile {
   filename: string;
   timestamp: string;
@@ -114,6 +144,8 @@ export interface AuditData {
   diff: DiffDetails;
   history_trends: TrendPoint[];
   recommendations?: Recommendation[];
+  security_alerts?: SecurityAlert[];
+  cleanup_flags?: CleanupFlag[];
   port_audit_results?: Record<string, Record<string, boolean>>;
   snapshots_list?: SnapshotFile[];
   passcode_hash?: string | null;

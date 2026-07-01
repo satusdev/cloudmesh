@@ -67,6 +67,7 @@ tar -czf "${ARCHIVE}" \
     prometheus.yml \
     script.py \
     requirements.txt \
+    redeploy.sh \
     .env.example
 
 # Step 3: Copy archive to remote server
@@ -86,7 +87,7 @@ ssh "${TARGET_USER}@${TARGET_IP}" bash -c "
   docker compose down --remove-orphans || true
   
   echo '🧹 Deleting older files...'
-  rm -rf src frontend/dist docker-compose.yml package.json postgres-init.sql prometheus.yml script.py requirements.txt .env.example
+  rm -rf src frontend/dist docker-compose.yml package.json postgres-init.sql prometheus.yml script.py requirements.txt redeploy.sh .env.example
   
   echo '📦 Extracting new archive...'
   tar -xzf ${ARCHIVE}
