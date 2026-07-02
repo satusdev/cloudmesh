@@ -8,7 +8,7 @@ from src.config import get_dashboard_password_hash
 
 def generate_html_dashboard(mapping_by_domain, unique_domains, total_a_records, matched_server_ips, ip_to_server):
     total_servers = len(matched_server_ips)
-    total_spending = sum(ip_to_server[ip]['price_monthly'] for ip in matched_server_ips if ip in ip_to_server)
+    total_spending = sum(res['price_monthly'] for res in ip_to_server.values())
     match_rate = (total_servers / total_a_records * 100) if total_a_records > 0 else 0
     unmatched_count = total_a_records - total_servers
 
@@ -598,7 +598,7 @@ def generate_html_dashboard(mapping_by_domain, unique_domains, total_a_records, 
 
 def generate_print_html(mapping_by_domain, unique_domains, total_a_records, matched_server_ips, ip_to_server):
     total_servers = len(matched_server_ips)
-    total_spending = sum(ip_to_server[ip]['price_monthly'] for ip in matched_server_ips if ip in ip_to_server)
+    total_spending = sum(res['price_monthly'] for res in ip_to_server.values())
 
     html = f"""
     <html>
@@ -691,7 +691,7 @@ def save_reports(html_dashboard, html_print, timestamp, mapping_by_domain, uniqu
     print(f"Interactive HTML dashboard generated: {html_file}")
 
     total_servers = len(matched_server_ips)
-    total_spending = sum(ip_to_server[ip]['price_monthly'] for ip in matched_server_ips if ip in ip_to_server)
+    total_spending = sum(res['price_monthly'] for res in ip_to_server.values())
     
     domain_expirations = {}
     for domain in unique_domains:

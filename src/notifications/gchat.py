@@ -7,7 +7,7 @@ def send_google_chat_notifications(unique_domains, total_a_records, matched_serv
         return
 
     total_servers = len(matched_server_ips)
-    total_spending = sum(ip_to_server[ip]['price_monthly'] for ip in matched_server_ips if ip in ip_to_server)
+    total_spending = sum(res['price_monthly'] for res in ip_to_server.values())
 
     expiring = []
     for domain in unique_domains:
