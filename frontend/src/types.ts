@@ -40,6 +40,12 @@ export interface ServerDetails {
   server_type: string;
   labels: string;
   price_monthly: number;
+  price_base?: number;
+  price_backups?: number;
+  price_primary_ip?: number;
+  price_excess?: number;
+  volume_size_gb?: number;
+  volume_price_per_gb?: number;
   traffic_mb: number;
   resource_type?: string;
 
@@ -99,6 +105,12 @@ export interface Recommendation {
   cost_impact: number;
   description: string;
   suggestion: string;
+  price_base?: number;
+  price_backups?: number;
+  price_primary_ip?: number;
+  price_excess?: number;
+  volume_size_gb?: number;
+  volume_price_per_gb?: number;
 }
 
 export interface SecurityAlert {

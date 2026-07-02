@@ -51,7 +51,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       {/* Live Metrics Panel & Sparklines */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Domains Stat */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
           <span className="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider block">Audited Domains</span>
           <div className="flex items-center justify-between mt-3">
             <span className="text-3xl font-black">{data.total_domains}</span>
@@ -71,7 +71,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
 
         {/* DNS Records Stat */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
           <span className="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider block">DNS A / AAAA Records</span>
           <div className="flex items-center justify-between mt-3">
             <span className="text-3xl font-black">{data.total_a_records}</span>
@@ -91,7 +91,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
 
         {/* Matched Servers Stat */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
           <span className="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider block">Mapped Server Targets</span>
           <div className="flex items-center justify-between mt-3">
             <div>
@@ -114,7 +114,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
 
         {/* Spend Stat */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
           <span className="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider block">Hetzner Monthly Spend</span>
           <div className="flex items-center justify-between mt-3">
             <span className="text-3xl font-black text-indigo-500">€{data.total_spending.toFixed(2)}</span>
@@ -140,7 +140,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           onClick={() => setShowTopology(false)}
           className={`text-xs font-bold px-4 py-2.5 rounded-2xl border flex items-center gap-1.5 transition duration-200 cursor-pointer ${
             !showTopology 
-              ? 'bg-indigo-650 border-indigo-600 text-white shadow-md shadow-indigo-600/10' 
+              ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/10' 
               : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-950 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
           }`}
         >
@@ -151,7 +151,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           onClick={() => setShowTopology(true)}
           className={`text-xs font-bold px-4 py-2.5 rounded-2xl border flex items-center gap-1.5 transition duration-200 cursor-pointer ${
             showTopology 
-              ? 'bg-indigo-650 border-indigo-600 text-white shadow-md shadow-indigo-600/10' 
+              ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/10' 
               : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-950 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
           }`}
         >
@@ -201,9 +201,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
                     return (
                       <div key={domain} className="flex justify-between items-center bg-slate-50 dark:bg-slate-950 p-4.5 rounded-2xl border border-slate-200/50 dark:border-slate-800/80">
-                        <span className="font-extrabold text-slate-800 dark:text-slate-205">{domain}</span>
+                        <span className="font-extrabold text-slate-800 dark:text-slate-200">{domain}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-slate-450 font-semibold">{details.expiry_date}</span>
+                          <span className="text-[10px] text-slate-400 font-semibold">{details.expiry_date}</span>
                           <span className={`text-[9px] uppercase tracking-wider px-2 py-0.5 rounded ${badgeColor}`}>
                             {label}
                           </span>
@@ -234,7 +234,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   <select
                     value={selectedSnapshotFile}
                     onChange={(e) => setSelectedSnapshotFile(e.target.value)}
-                    className="bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none outline-none cursor-pointer"
+                    className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none outline-none cursor-pointer"
                   >
                     <option value="">Compare against snapshot...</option>
                     {data.snapshots_list.map((snap) => (
@@ -290,7 +290,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                         </span>
                       </div>
                       {comparisonDiff.dns.modified.map((item, idx) => (
-                        <div key={idx} className="text-[10px] font-semibold text-slate-655 dark:text-slate-350 ml-2">
+                        <div key={idx} className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 ml-2">
                           ~ {item.subdomain}: <span className="font-mono text-rose-500">{item.old_ip}</span> <ArrowRight className="inline h-3 w-3 mx-1 text-slate-400" /> <span className="font-mono text-emerald-500">{item.new_ip}</span>
                         </div>
                       ))}
@@ -333,7 +333,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                         </span>
                       </div>
                       {comparisonDiff.servers.status_changed.map((item, idx) => (
-                        <div key={idx} className="text-[10px] font-semibold text-slate-655 dark:text-slate-350 ml-2">
+                        <div key={idx} className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 ml-2">
                           ~ {item.server_name}: <span className="font-bold text-rose-500">{item.old_status}</span> <ArrowRight className="inline h-3 w-3 mx-1 text-slate-400" /> <span className="font-bold text-emerald-500">{item.new_status}</span>
                         </div>
                       ))}
@@ -372,7 +372,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                         <span className="font-extrabold text-slate-800 dark:text-slate-200 text-sm">{server.server_name}</span>
                         <span className="text-rose-500 font-extrabold">€{server.price_monthly.toFixed(2)}/mo</span>
                       </div>
-                      <div className="flex justify-between text-[10px] text-slate-450 font-bold uppercase mt-1">
+                      <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase mt-1">
                         <span>IP: {server.ip}</span>
                         <span>Project: {server.project}</span>
                       </div>
@@ -401,10 +401,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   return (
                     <div key={project} className="space-y-1.5">
                       <div className="flex justify-between font-bold">
-                        <span className="text-slate-655 dark:text-slate-300">{project}</span>
+                        <span className="text-slate-600 dark:text-slate-300">{project}</span>
                         <span className="text-slate-500 dark:text-slate-400">
                           €{stats.total.toFixed(2)}
-                          <span className="text-[10px] text-slate-450 ml-1">({stats.count} servers)</span>
+                          <span className="text-[10px] text-slate-400 ml-1">({stats.count} servers)</span>
                         </span>
                       </div>
                       <div className="w-full bg-slate-100 dark:bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-200 dark:border-slate-800">
@@ -436,7 +436,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </div>
                 <div className="flex justify-between items-center font-bold">
                   <span className="text-slate-500 dark:text-slate-400">Scheduled Daemon</span>
-                  <span className="font-mono text-indigo-650 dark:text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">Continuous</span>
+                  <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">Continuous</span>
                 </div>
               </div>
             </div>

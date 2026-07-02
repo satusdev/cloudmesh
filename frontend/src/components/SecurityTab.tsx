@@ -15,33 +15,65 @@ interface SecurityTabProps {
 export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
   const alerts = data.security_alerts || [];
   
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [selectedProject, setSelectedProject] = React.useState('All');
+
+  // Unique list of projects from servers and alerts
+  const projectsList = useMemo(() => {
+    const list = new Set<string>();
+    data.servers.forEach(s => {
+      if (s.project) list.add(s.project);
+    });
+    alerts.forEach(a => {
+      const srv = data.servers.find(s => s.server_name === a.resource_name);
+      if (srv && srv.project) list.add(srv.project);
+    });
+    return ['All', ...Array.from(list)];
+  }, [data.servers, alerts]);
+
+  // Filtered alerts
+  const filteredAlerts = useMemo(() => {
+    return alerts.filter(a => {
+      const srv = data.servers.find(s => s.server_name === a.resource_name);
+      const project = srv ? srv.project : 'Unmapped';
+      
+      const matchesProject = selectedProject === 'All' || project === selectedProject;
+      const matchesSearch = !searchTerm || 
+        a.resource_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        a.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        a.severity.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesProject && matchesSearch;
+    });
+  }, [alerts, data.servers, selectedProject, searchTerm]);
+
+  // Recalculated stats based on filters
   const stats = useMemo(() => {
-    const critical = alerts.filter(a => a.severity === 'critical').length;
-    const high = alerts.filter(a => a.severity === 'high').length;
-    const medium = alerts.filter(a => a.severity === 'medium').length;
-    const low = alerts.filter(a => a.severity === 'low').length;
-    return { total: alerts.length, critical, high, medium, low };
-  }, [alerts]);
+    const critical = filteredAlerts.filter(a => a.severity === 'critical').length;
+    const high = filteredAlerts.filter(a => a.severity === 'high').length;
+    const medium = filteredAlerts.filter(a => a.severity === 'medium').length;
+    const low = filteredAlerts.filter(a => a.severity === 'low').length;
+    return { total: filteredAlerts.length, critical, high, medium, low };
+  }, [filteredAlerts]);
 
   const getSeverityStyles = (severity: string) => {
     switch (severity) {
       case 'critical':
         return {
-          bg: 'bg-rose-500/10 border-rose-550/30 text-rose-500',
+          bg: 'bg-rose-500/10 border-rose-500/30 text-rose-500',
           title: 'text-rose-500 font-extrabold',
           badge: 'bg-rose-600 text-white font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] uppercase tracking-wider',
           icon: <AlertOctagon className="h-5 w-5 text-rose-500 shrink-0" />
         };
       case 'high':
         return {
-          bg: 'bg-orange-500/10 border-orange-550/20 text-orange-500',
+          bg: 'bg-orange-500/10 border-orange-500/20 text-orange-500',
           title: 'text-orange-500 font-extrabold',
           badge: 'bg-orange-500 text-white font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] uppercase tracking-wider',
           icon: <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0" />
         };
       case 'medium':
         return {
-          bg: 'bg-amber-500/10 border-amber-550/20 text-amber-600 dark:text-amber-400',
+          bg: 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400',
           title: 'text-amber-600 dark:text-amber-400 font-extrabold',
           badge: 'bg-amber-500 text-white dark:bg-amber-500/20 dark:text-amber-400 font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] uppercase tracking-wider',
           icon: <ShieldAlert className="h-5 w-5 text-amber-500 shrink-0" />
@@ -49,31 +81,69 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
       default:
         return {
           bg: 'bg-slate-100 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400',
-          title: 'text-slate-650 dark:text-slate-400 font-bold',
+          title: 'text-slate-600 dark:text-slate-400 font-bold',
           badge: 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold px-2 py-0.5 rounded text-[9px] uppercase tracking-wider',
           icon: <ShieldQuestion className="h-5 w-5 text-slate-400 shrink-0" />
         };
     }
   };
 
+  // Filtered port scans
   const openPortsMap = useMemo(() => {
     const map: Record<string, number[]> = {};
     Object.entries(data.port_audit_results || {}).forEach(([ip, ports]) => {
-      const open: number[] = [];
-      Object.entries(ports).forEach(([p, isOpen]) => {
-        if (isOpen) open.push(parseInt(p));
-      });
-      open.sort((a, b) => a - b);
-      map[ip] = open;
+      const srv = data.servers.find(s => s.ip === ip);
+      const project = srv ? srv.project : 'Unmapped';
+      const labelName = srv ? srv.server_name : "DNS Host / External IP";
+
+      const matchesProject = selectedProject === 'All' || project === selectedProject;
+      const matchesSearch = !searchTerm || 
+        ip.includes(searchTerm) || 
+        labelName.toLowerCase().includes(searchTerm.toLowerCase());
+
+      if (matchesProject && matchesSearch) {
+        const open: number[] = [];
+        Object.entries(ports).forEach(([p, isOpen]) => {
+          if (isOpen) open.push(parseInt(p));
+        });
+        open.sort((a, b) => a - b);
+        map[ip] = open;
+      }
     });
     return map;
-  }, [data]);
+  }, [data.port_audit_results, data.servers, selectedProject, searchTerm]);
 
   return (
     <div className="space-y-6">
+      {/* Top Controls Bar */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-black text-slate-800 dark:text-slate-200">Security Audit Control & Filter</h2>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Slice findings across projects</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            placeholder="Search host, issue, description..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500 w-52"
+          />
+          <select
+            value={selectedProject}
+            onChange={e => setSelectedProject(e.target.value)}
+            className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+          >
+            {projectsList.map(p => (
+              <option key={p} value={p}>{p === 'All' ? 'All Projects' : p}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Top Severity Counters */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
           <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider">Total Alerts</p>
           <div className="flex items-baseline justify-between mt-2">
             <span className="text-3xl font-black">{stats.total}</span>
@@ -81,7 +151,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
           <p className="text-xs text-rose-500 font-semibold uppercase tracking-wider">Critical</p>
           <div className="flex items-baseline justify-between mt-2">
             <span className={`text-3xl font-black ${stats.critical > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>
@@ -91,7 +161,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
           <p className="text-xs text-orange-500 font-semibold uppercase tracking-wider">High</p>
           <div className="flex items-baseline justify-between mt-2">
             <span className="text-3xl font-black text-orange-500">{stats.high}</span>
@@ -99,15 +169,15 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between">
           <p className="text-xs text-amber-500 font-semibold uppercase tracking-wider">Medium</p>
           <div className="flex items-baseline justify-between mt-2">
             <span className="text-3xl font-black text-amber-500">{stats.medium}</span>
-            <span className="text-xs text-slate-400 font-semibold">Configuration drift</span>
+            <span className="text-xs text-slate-400 font-semibold">Config issues</span>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-805 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between col-span-2 md:col-span-1">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between col-span-2 md:col-span-1">
           <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Low</p>
           <div className="flex items-baseline justify-between mt-2">
             <span className="text-3xl font-black text-slate-500 dark:text-slate-400">{stats.low}</span>
@@ -122,12 +192,12 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
             <h3 className="text-sm font-black flex items-center gap-2 mb-4">
               <ShieldAlert className="h-5 w-5 text-rose-500" />
-              Active Security Infrastructure Shortcomings
+              Active Security Infrastructure Shortcomings ({filteredAlerts.length})
             </h3>
 
             <div className="space-y-3.5 max-h-[600px] overflow-y-auto pr-2">
-              {alerts.length > 0 ? (
-                alerts.map((alert) => {
+              {filteredAlerts.length > 0 ? (
+                filteredAlerts.map((alert) => {
                   const style = getSeverityStyles(alert.severity);
                   return (
                     <div 
@@ -150,7 +220,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
                           </div>
                         </div>
 
-                        <p className="text-slate-655 dark:text-slate-350 font-medium leading-relaxed">
+                        <p className="text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
                           {alert.description}
                         </p>
 
@@ -169,7 +239,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
                   </div>
                   <h4 className="text-emerald-500 font-bold">Zero Security Findings</h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                    Congratulations! Your infrastructure meets all audit standards.
+                    No active shortcomings matched the current filter.
                   </p>
                 </div>
               )}
@@ -186,7 +256,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
                 <p className="text-[10px] text-slate-400 font-semibold mt-0.5 uppercase tracking-wider">Active connection audits</p>
               </div>
               <span className="text-[10px] bg-indigo-500/10 px-2 py-0.5 border border-indigo-500/20 text-indigo-500 rounded-full font-extrabold uppercase">
-                {Object.keys(openPortsMap).length} IPs
+                {Object.keys(openPortsMap).length} IPs Filtered
               </span>
             </div>
 
@@ -207,10 +277,10 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
                     
                     return (
                       <tr key={ip} className="hover:bg-slate-50/60 dark:hover:bg-slate-950/20 transition">
-                        <td className="py-3.5 px-6 font-bold font-mono text-indigo-650 dark:text-indigo-400">{ip}</td>
+                        <td className="py-3.5 px-6 font-bold font-mono text-indigo-600 dark:text-indigo-400">{ip}</td>
                         <td className="py-3.5 px-6">
                           <div className="flex flex-col gap-0.5">
-                            <span className="font-bold text-slate-800 dark:text-slate-205">{labelName}</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{labelName}</span>
                             <span className="text-[10px] text-slate-400 font-semibold uppercase">{projectLabel}</span>
                           </div>
                         </td>
@@ -242,6 +312,13 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ data }) => {
                       </tr>
                     );
                   })}
+                  {Object.keys(openPortsMap).length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="text-center py-8 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                        No port logs match filter criteria
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

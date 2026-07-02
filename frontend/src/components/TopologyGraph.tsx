@@ -124,7 +124,7 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
           </div>
           <button 
             onClick={() => setSelectedNodeDetails(null)}
-            className="text-slate-505 hover:text-slate-305 font-bold px-2 py-0.5 rounded border border-slate-800 cursor-pointer"
+            className="text-slate-500 hover:text-slate-300 font-bold px-2 py-0.5 rounded border border-slate-800 cursor-pointer"
           >
             Close
           </button>

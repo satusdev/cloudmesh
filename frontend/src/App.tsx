@@ -415,7 +415,7 @@ export default function App() {
     return (
       <div className={`min-h-screen transition-colors duration-250 flex flex-col items-center justify-center p-4 ${theme === 'dark' ? 'bg-[#030712] text-slate-100' : 'bg-[#f8fafc] text-slate-950'}`}>
         <div className="flex flex-col items-center space-y-4">
-          <RefreshCw className="h-10 w-10 text-indigo-550 animate-spin" />
+          <RefreshCw className="h-10 w-10 text-indigo-500 animate-spin" />
           <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">Loading Auditor Dashboard...</h2>
         </div>
       </div>
@@ -425,13 +425,13 @@ export default function App() {
   if (error || !data) {
     return (
       <div className={`min-h-screen transition-colors duration-250 flex flex-col items-center justify-center p-4 ${theme === 'dark' ? 'bg-[#030712] text-slate-100' : 'bg-[#f8fafc] text-slate-950'}`}>
-        <div className="max-w-md w-full bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-850 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center">
+        <div className="max-w-md w-full bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center">
           <AlertTriangle className="h-12 w-12 text-rose-500 mb-4 animate-pulse" />
           <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">Audit Session Inactive</h2>
           <p className="text-slate-400 text-sm mb-6 leading-relaxed">
             {error || 'No audit records were parsed from cache or cloud credentials.'}
           </p>
-          <div className="bg-slate-955 rounded-xl p-3.5 text-left font-mono text-xs text-indigo-400 mb-6 border border-slate-250 dark:border-slate-800 w-full">
+          <div className="bg-slate-950 rounded-xl p-3.5 text-left font-mono text-xs text-indigo-400 mb-6 border border-slate-200 dark:border-slate-800 w-full">
             <span className="text-slate-500">$</span> ./venv/bin/python3 script.py
           </div>
           <button 
@@ -459,7 +459,7 @@ export default function App() {
           </button>
         </div>
         
-        <div className="max-w-md w-full bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-850 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center space-y-6">
+        <div className="max-w-md w-full bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center space-y-6">
           <div className="bg-indigo-600/10 p-4 rounded-full border border-indigo-500/20 text-indigo-500">
             <Lock className="h-10 w-10" />
           </div>
@@ -477,7 +477,7 @@ export default function App() {
                   setPasscodeError('');
                 }}
                 placeholder="Enter dashboard passcode..."
-                className="w-full bg-slate-100/50 dark:bg-slate-950/50 border border-slate-250 dark:border-slate-800/80 rounded-xl py-3.5 px-4 text-center text-sm font-semibold tracking-wide placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition duration-200"
+                className="w-full bg-slate-100/50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl py-3.5 px-4 text-center text-sm font-semibold tracking-wide placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition duration-200"
               />
             </div>
             {passcodeError && (
@@ -529,7 +529,7 @@ export default function App() {
         <div className="space-y-8">
           {/* Logo Header */}
           <div className="flex items-center gap-3">
-            <div className="bg-indigo-600/10 p-2.5 rounded-2xl border border-indigo-500/20 text-indigo-650 dark:text-indigo-400">
+            <div className="bg-indigo-600/10 p-2.5 rounded-2xl border border-indigo-500/20 text-indigo-600 dark:text-indigo-400">
               <Layers className="h-6 w-6" />
             </div>
             <div>
@@ -580,7 +580,7 @@ export default function App() {
         <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800/80">
           <div className="flex flex-col gap-0.5">
             <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Report Timestamp</span>
-            <span className="text-[11px] font-mono font-bold text-slate-655 dark:text-slate-300">{data.timestamp}</span>
+            <span className="text-[11px] font-mono font-bold text-slate-600 dark:text-slate-300">{data.timestamp}</span>
           </div>
 
           <div className="flex items-center justify-between">
@@ -605,7 +605,7 @@ export default function App() {
             {data.passcode_hash && (
               <button 
                 onClick={handleLock}
-                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-205 dark:border-slate-800/60 text-rose-500 p-2 rounded-xl transition duration-200 cursor-pointer"
+                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800/60 text-rose-500 p-2 rounded-xl transition duration-200 cursor-pointer"
                 title="Lock Session"
               >
                 <Lock className="h-4.5 w-4.5" />
@@ -655,7 +655,7 @@ export default function App() {
                   }}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition duration-200 cursor-pointer ${
                     isActive 
-                      ? 'bg-indigo-650 text-white' 
+                      ? 'bg-indigo-600 text-white' 
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/40'
                   }`}
                 >
@@ -722,7 +722,7 @@ export default function App() {
           )}
 
           {activePage === 'cleanup' && (
-            <CleanupTab cleanupFlags={data.cleanup_flags || []} />
+            <CleanupTab cleanupFlags={data.cleanup_flags || []} data={data} />
           )}
         </main>
 

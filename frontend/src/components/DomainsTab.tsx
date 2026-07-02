@@ -28,11 +28,11 @@ export const DomainsTab: React.FC<DomainsTabProps> = ({
       {/* Domain filter selection */}
       <div className="glass-panel p-5 rounded-2xl border-slate-200 dark:border-slate-800 flex flex-wrap gap-4 items-center justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="font-bold text-slate-550">Domain Expiration Filter:</span>
+          <span className="font-bold text-slate-500">Domain Expiration Filter:</span>
           <select
             value={expiryFilter}
             onChange={(e) => setExpiryFilter(e.target.value as any)}
-            className="bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 p-2 rounded-lg text-slate-750 dark:text-slate-300 font-semibold outline-none"
+            className="bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-2 rounded-lg text-slate-700 dark:text-slate-300 font-semibold outline-none"
           >
             <option value="all">All Domains</option>
             <option value="expired">Expired Only</option>
@@ -40,11 +40,11 @@ export const DomainsTab: React.FC<DomainsTabProps> = ({
             <option value="healthy">Healthy (&gt; 30 days)</option>
           </select>
 
-          <span className="font-bold text-slate-555 ml-2">Sort By:</span>
+          <span className="font-bold text-slate-500 ml-2">Sort By:</span>
           <select
             value={domainSortKey}
             onChange={(e) => setDomainSortKey(e.target.value as any)}
-            className="bg-slate-105 dark:bg-slate-955 border border-slate-202 dark:border-slate-852 p-2 rounded-lg text-slate-755 dark:text-slate-305 font-semibold outline-none"
+            className="bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-2 rounded-lg text-slate-700 dark:text-slate-300 font-semibold outline-none"
           >
             <option value="name">Domain Name</option>
             <option value="expiry">Expiration Days</option>
@@ -53,7 +53,7 @@ export const DomainsTab: React.FC<DomainsTabProps> = ({
           </select>
           <button
             onClick={() => setDomainSortOrder(domainSortOrder === 'asc' ? 'desc' : 'asc')}
-            className="bg-slate-105 hover:bg-slate-202 dark:bg-slate-955 dark:hover:bg-slate-900 border border-slate-202 dark:border-slate-852 p-2 rounded-lg text-slate-750 dark:text-slate-355 cursor-pointer font-bold transition"
+            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-950 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 rounded-lg text-slate-700 dark:text-slate-300 cursor-pointer font-bold transition"
           >
             {domainSortOrder === 'asc' ? '↑ Ascending' : '↓ Descending'}
           </button>
@@ -70,7 +70,7 @@ export const DomainsTab: React.FC<DomainsTabProps> = ({
             Upcoming Expiration Timeline
           </h3>
           
-          <div className="relative border-l border-slate-205 dark:border-slate-850 pl-4 ml-2 space-y-6 pt-2">
+          <div className="relative border-l border-slate-200 dark:border-slate-800 pl-4 ml-2 space-y-6 pt-2">
             {Object.entries(data.domain_expirations)
               .slice()
               .sort((a, b) => (a[1].days_left ?? 9999) - (b[1].days_left ?? 9999))
@@ -86,7 +86,7 @@ export const DomainsTab: React.FC<DomainsTabProps> = ({
                     {/* Timeline node */}
                     <span className={`absolute -left-[21px] top-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#030712] ${color}`}></span>
                     <div className="space-y-0.5">
-                      <span className="font-bold text-slate-705 dark:text-slate-205 block">{domain}</span>
+                      <span className="font-bold text-slate-700 dark:text-slate-200 block">{domain}</span>
                       <span className="text-[10px] text-slate-500 font-medium font-mono">
                         {days !== null ? (isExpired ? `Expired ${Math.abs(days)} days ago` : `${days} days remaining`) : 'Expiry unknown'}
                       </span>
@@ -101,7 +101,7 @@ export const DomainsTab: React.FC<DomainsTabProps> = ({
         <div className="lg:col-span-2 glass-panel rounded-2xl border-slate-200 dark:border-slate-800 overflow-hidden">
           <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
             <h3 className="text-sm font-bold">Cloudflare Zones Expiry & Summary</h3>
-            <span className="font-bold text-[10px] bg-indigo-500/10 px-2 py-0.5 border border-indigo-500/25 text-indigo-550 rounded-full">
+            <span className="font-bold text-[10px] bg-indigo-500/10 px-2 py-0.5 border border-indigo-500/25 text-indigo-500 rounded-full">
               {Object.keys(data.domain_expirations).length} Zones
             </span>
           </div>
@@ -110,11 +110,11 @@ export const DomainsTab: React.FC<DomainsTabProps> = ({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-100/50 dark:bg-slate-950/40 border-b border-slate-200 dark:border-slate-800/50">
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5">Domain Zone</th>
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5">Expiration Date</th>
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5">Days Left</th>
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5">A Records</th>
-                  <th className="font-semibold text-slate-550 dark:text-slate-400 uppercase tracking-wider py-3 px-5 text-right">Zone Cost</th>
+                  <th className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider py-3 px-5">Domain Zone</th>
+                  <th className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider py-3 px-5">Expiration Date</th>
+                  <th className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider py-3 px-5">Days Left</th>
+                  <th className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider py-3 px-5">A Records</th>
+                  <th className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider py-3 px-5 text-right">Zone Cost</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800/40">
@@ -126,15 +126,15 @@ export const DomainsTab: React.FC<DomainsTabProps> = ({
 
                   return (
                     <tr key={domain} className="hover:bg-slate-50 dark:hover:bg-slate-900/30">
-                      <td className="py-3.5 px-5 font-bold text-slate-700 dark:text-slate-202">{domain}</td>
-                      <td className="py-3.5 px-5 font-mono text-slate-550 font-semibold">{info?.expiry_date || 'N/A'}</td>
+                      <td className="py-3.5 px-5 font-bold text-slate-700 dark:text-slate-200">{domain}</td>
+                      <td className="py-3.5 px-5 font-mono text-slate-500 font-semibold">{info?.expiry_date || 'N/A'}</td>
                       <td className="py-3.5 px-5">
                         {days !== null ? (
                           <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border ${
                             isExpired 
                               ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' 
                               : days <= 30 
-                                ? 'bg-amber-500/10 border-amber-500/20 text-amber-505' 
+                                ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' 
                                 : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
                           }`}>
                             {isExpired ? `Expired (${Math.abs(days)}d)` : `${days} days left`}
@@ -143,8 +143,8 @@ export const DomainsTab: React.FC<DomainsTabProps> = ({
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-5 font-bold text-slate-550">{records.length} records</td>
-                      <td className="py-3.5 px-5 text-right font-mono text-indigo-550 dark:text-indigo-305 font-bold">
+                      <td className="py-3.5 px-5 font-bold text-slate-500">{records.length} records</td>
+                      <td className="py-3.5 px-5 text-right font-mono text-indigo-500 dark:text-indigo-300 font-bold">
                         €{cost.toFixed(2)}
                       </td>
                     </tr>

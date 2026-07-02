@@ -7,16 +7,18 @@ import {
   Info,
   Check
 } from 'lucide-react';
-import type { CleanupFlag } from '../types';
+import type { CleanupFlag, AuditData } from '../types';
 
 interface CleanupTabProps {
   cleanupFlags: CleanupFlag[];
+  data?: AuditData;
 }
 
-export function CleanupTab({ cleanupFlags }: CleanupTabProps) {
+export function CleanupTab({ cleanupFlags, data }: CleanupTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'dangling_dns' | 'private_ip' | 'resolution_error' | 'dead_target'>('all');
   const [severityFilter, setSeverityFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
+  const [selectedProject, setSelectedProject] = useState('All');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const handleCopy = (id: string, text: string) => {
@@ -24,6 +26,22 @@ export function CleanupTab({ cleanupFlags }: CleanupTabProps) {
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
+
+  // Helper to resolve project for a flag based on target IP
+  const getFlagProject = (flag: CleanupFlag) => {
+    if (!data?.servers) return 'Unmapped';
+    const srv = data.servers.find(s => s.ip === flag.ip);
+    return srv ? srv.project : 'Unmapped';
+  };
+
+  // List of projects
+  const projectsList = useMemo(() => {
+    const list = new Set<string>();
+    cleanupFlags.forEach(f => {
+      list.add(getFlagProject(f));
+    });
+    return ['All', ...Array.from(list)];
+  }, [cleanupFlags, data?.servers]);
 
   const filteredFlags = useMemo(() => {
     return cleanupFlags.filter(flag => {
@@ -34,20 +52,23 @@ export function CleanupTab({ cleanupFlags }: CleanupTabProps) {
       
       const matchesType = typeFilter === 'all' || flag.flag_type === typeFilter;
       const matchesSeverity = severityFilter === 'all' || flag.severity === severityFilter;
+      
+      const project = getFlagProject(flag);
+      const matchesProject = selectedProject === 'All' || project === selectedProject;
 
-      return matchesSearch && matchesType && matchesSeverity;
+      return matchesSearch && matchesType && matchesSeverity && matchesProject;
     });
-  }, [cleanupFlags, searchTerm, typeFilter, severityFilter]);
+  }, [cleanupFlags, searchTerm, typeFilter, severityFilter, selectedProject, data?.servers]);
 
   const stats = useMemo(() => {
-    const total = cleanupFlags.length;
-    const dangling = cleanupFlags.filter(f => f.flag_type === 'dangling_dns').length;
-    const privateIp = cleanupFlags.filter(f => f.flag_type === 'private_ip').length;
-    const resError = cleanupFlags.filter(f => f.flag_type === 'resolution_error').length;
-    const deadTarget = cleanupFlags.filter(f => f.flag_type === 'dead_target').length;
+    const total = filteredFlags.length;
+    const dangling = filteredFlags.filter(f => f.flag_type === 'dangling_dns').length;
+    const privateIp = filteredFlags.filter(f => f.flag_type === 'private_ip').length;
+    const resError = filteredFlags.filter(f => f.flag_type === 'resolution_error').length;
+    const deadTarget = filteredFlags.filter(f => f.flag_type === 'dead_target').length;
 
     return { total, dangling, privateIp, resError, deadTarget };
-  }, [cleanupFlags]);
+  }, [filteredFlags]);
 
   const getSeverityStyles = (severity: string) => {
     switch (severity) {
@@ -112,14 +133,14 @@ export function CleanupTab({ cleanupFlags }: CleanupTabProps) {
           <p className="text-xs text-indigo-500 font-semibold uppercase tracking-wider">Resolution Failures</p>
           <div className="flex items-baseline justify-between mt-2">
             <span className="text-3xl font-black text-indigo-500">{stats.resError}</span>
-            <span className="text-xs text-slate-400 font-semibold font-semibold">Bad domains</span>
+            <span className="text-xs text-slate-400 font-semibold">Bad domains</span>
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl transition duration-200 shadow-sm flex flex-col justify-between col-span-2 md:col-span-1">
           <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Unresponsive</p>
           <div className="flex items-baseline justify-between mt-2">
-            <span className="text-3xl font-black text-slate-650 dark:text-slate-300">{stats.deadTarget}</span>
+            <span className="text-3xl font-black text-slate-600 dark:text-slate-300">{stats.deadTarget}</span>
             <span className="text-xs text-slate-400 font-semibold">Dead endpoints</span>
           </div>
         </div>
@@ -135,16 +156,27 @@ export function CleanupTab({ cleanupFlags }: CleanupTabProps) {
               placeholder="Search by domain, record or IP..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-2xl py-3 pl-11 pr-4 text-sm font-semibold focus:outline-none focus:border-indigo-500 transition duration-200"
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl py-3 pl-11 pr-4 text-sm font-semibold focus:outline-none focus:border-indigo-500 transition duration-200"
             />
           </div>
 
           <div className="flex flex-wrap gap-3 w-full md:w-auto">
+            {/* Filter by project */}
+            <select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs font-bold focus:outline-none focus:border-indigo-500 transition duration-200 cursor-pointer"
+            >
+              {projectsList.map(p => (
+                <option key={p} value={p}>{p === 'All' ? 'All Projects' : p}</option>
+              ))}
+            </select>
+
             {/* Filter by flag type */}
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs font-bold focus:outline-none focus:border-indigo-500 transition duration-200 cursor-pointer"
+              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs font-bold focus:outline-none focus:border-indigo-500 transition duration-200 cursor-pointer"
             >
               <option value="all">All Issue Types</option>
               <option value="dangling_dns">Dangling DNS</option>
@@ -157,7 +189,7 @@ export function CleanupTab({ cleanupFlags }: CleanupTabProps) {
             <select
               value={severityFilter}
               onChange={(e) => setSeverityFilter(e.target.value as any)}
-              className="bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs font-bold focus:outline-none focus:border-indigo-500 transition duration-200 cursor-pointer"
+              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs font-bold focus:outline-none focus:border-indigo-500 transition duration-200 cursor-pointer"
             >
               <option value="all">All Severities</option>
               <option value="high">High Severity</option>
@@ -174,6 +206,7 @@ export function CleanupTab({ cleanupFlags }: CleanupTabProps) {
           {filteredFlags.map((flag) => {
             const severityStyle = getSeverityStyles(flag.severity);
             const hostname = flag.subdomain === '@' ? flag.domain : `${flag.subdomain}.${flag.domain}`;
+            const proj = getFlagProject(flag);
             
             return (
               <div 
@@ -189,20 +222,23 @@ export function CleanupTab({ cleanupFlags }: CleanupTabProps) {
                     <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${severityStyle.badge}`}>
                       {getFlagTypeLabel(flag.flag_type)}
                     </span>
+                    <span className="text-[9px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded font-bold uppercase text-slate-500">
+                      {proj}
+                    </span>
                     <span className="text-xs font-semibold font-mono text-slate-400 ml-1">
                       {flag.ip}
                     </span>
                   </div>
 
-                  <p className="text-sm text-slate-655 dark:text-slate-350 font-medium leading-relaxed max-w-3xl">
+                  <p className="text-sm text-slate-600 dark:text-slate-300 font-medium leading-relaxed max-w-3xl">
                     {flag.description}
                   </p>
 
-                  <div className="flex items-start gap-2 bg-slate-50 dark:bg-slate-950 border border-slate-200/50 dark:border-slate-800/80 p-3.5 rounded-2xl">
+                  <div className="flex items-start gap-2 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100/50 dark:border-indigo-900/30 p-3.5 rounded-2xl">
                     <Info className="h-4 w-4 text-indigo-500 shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Recommended Mitigation</p>
-                      <p className="text-xs text-slate-605 dark:text-slate-305 font-semibold mt-0.5">{flag.suggestion}</p>
+                      <p className="text-xs font-bold text-slate-500 dark:text-indigo-400 uppercase tracking-wide">Recommended Mitigation</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold mt-0.5">{flag.suggestion}</p>
                     </div>
                   </div>
                 </div>

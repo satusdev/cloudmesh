@@ -161,7 +161,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
               placeholder="Search domain zones, subdomains, IPs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-2xl py-3 pl-11 pr-4 text-sm font-semibold focus:outline-none focus:border-indigo-500 transition duration-200"
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl py-3 pl-11 pr-4 text-sm font-semibold focus:outline-none focus:border-indigo-500 transition duration-200"
             />
           </div>
 
@@ -171,7 +171,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
               onClick={() => setActiveTab('all')}
               className={`rounded-2xl px-4 py-2.5 text-xs font-bold transition cursor-pointer ${
                 activeTab === 'all' 
-                  ? 'bg-indigo-650 text-white shadow-md shadow-indigo-600/10' 
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' 
                   : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-950 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'
               }`}
             >
@@ -206,7 +206,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
             <select
               value={proxyFilter}
               onChange={(e) => setProxyFilter(e.target.value as any)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none"
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none"
             >
               <option value="all">All Modes</option>
               <option value="proxied">Proxied (Orange)</option>
@@ -219,7 +219,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
             <select
               value={dnsTypeFilter}
               onChange={(e) => setDnsTypeFilter(e.target.value as any)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none"
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none"
             >
               <option value="all">All Types</option>
               <option value="A">A Records</option>
@@ -232,7 +232,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
             <select
               value={wildcardFilter}
               onChange={(e) => setWildcardFilter(e.target.value as any)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none"
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none"
             >
               <option value="all">All Records</option>
               <option value="wildcard">Wildcard Only</option>
@@ -245,7 +245,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
             <select
               value={expiryFilter}
               onChange={(e) => setExpiryFilter(e.target.value as any)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none"
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none"
             >
               <option value="all">All Expiries</option>
               <option value="expired">Expired Domains</option>
@@ -259,7 +259,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
             <select
               value={selectedProject}
               onChange={(e) => setSelectedProject(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none"
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none"
             >
               <option value="all">All Projects</option>
               {projectsList.map(p => (
@@ -286,7 +286,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
           </select>
           <button
             onClick={() => setDomainSortOrder(domainSortOrder === 'asc' ? 'desc' : 'asc')}
-            className="bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl text-slate-700 dark:text-slate-350 font-extrabold cursor-pointer transition flex items-center gap-1"
+            className="bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl text-slate-700 dark:text-slate-300 font-extrabold cursor-pointer transition flex items-center gap-1"
           >
             <ArrowUpDown className="h-3 w-3" />
             <span>{domainSortOrder === 'asc' ? 'Ascending' : 'Descending'}</span>
@@ -306,7 +306,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
           </select>
           <button
             onClick={() => setDnsSortOrder(dnsSortOrder === 'asc' ? 'desc' : 'asc')}
-            className="bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl text-slate-700 dark:text-slate-350 font-extrabold cursor-pointer transition flex items-center gap-1"
+            className="bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl text-slate-700 dark:text-slate-300 font-extrabold cursor-pointer transition flex items-center gap-1"
           >
             <ArrowUpDown className="h-3 w-3" />
             <span>{dnsSortOrder === 'asc' ? 'Ascending' : 'Descending'}</span>
@@ -351,7 +351,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
                 {/* Domain Header */}
                 <div 
                   onClick={() => toggleDomain(domain)}
-                  className="bg-slate-50 dark:bg-slate-950/40 hover:bg-slate-100 dark:hover:bg-slate-955 px-6 py-4.5 flex items-center justify-between cursor-pointer transition border-b border-slate-200 dark:border-slate-800/40"
+                  className="bg-slate-50 dark:bg-slate-950/40 hover:bg-slate-100 dark:hover:bg-slate-950 px-6 py-4.5 flex items-center justify-between cursor-pointer transition border-b border-slate-200 dark:border-slate-800/40"
                 >
                   <div className="flex items-center gap-3">
                     <button className="text-slate-400">
@@ -408,7 +408,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
                                   <span>{record.ip}</span>
                                   <button
                                     onClick={() => handleCopy(record.ip)}
-                                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-850 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+                                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
                                     title="Copy IP"
                                   >
                                     {copiedIp === record.ip ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
@@ -438,7 +438,7 @@ export function MappingsTab({ data }: MappingsTabProps) {
                                   <div className="flex items-center gap-1.5">
                                     <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
                                     <span className="font-bold text-slate-800 dark:text-slate-200">{record.server_name}</span>
-                                    <span className="text-[10px] text-slate-450 dark:text-slate-500">
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500">
                                       ({record.server_type})
                                     </span>
                                   </div>
