@@ -7,7 +7,12 @@ import whois
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from src.api.cloudflare import fetch_cloudflare_zones, fetch_dns_records
-from src.api.hetzner import parallel_fetch_hetzner_resources, PRICING, fetch_dynamic_pricing
+from src.api.hetzner import (
+    parallel_fetch_hetzner_resources, 
+    PRICING, 
+    fetch_dynamic_pricing, 
+    fetch_hetzner_object_storage
+)
 
 # WHOIS cache persistent path
 CACHE_PATH = os.path.join('reports', 'whois_cache.json')
@@ -172,7 +177,7 @@ def generate_recommendations(all_resources, matched_ips, mapping_by_domain):
     recommendations = []
     total_potential_savings = 0.0
     
-    # 1. Unmapped Resources (Stale VMs, LBs, FIPs)
+    # 1. Unmapped Resources (Stale VMs, LBs, FIPs, Volumes, Primary IPs, Buckets)
     for res in all_resources:
         if res['ip'] not in matched_ips:
             res_type = res['resource_type']
@@ -187,10 +192,30 @@ def generate_recommendations(all_resources, matched_ips, mapping_by_domain):
                 description = f"Load Balancer '{name}' has no active Cloudflare DNS records pointing to its IP ({res['ip']})."
                 suggestion = "Consider deleting this load balancer if it is no longer routing traffic."
                 severity = "medium"
-            else: # floating_ip
+            elif res_type == 'floating_ip':
                 description = f"Floating IP '{name}' is not targeted by any active Cloudflare DNS records."
                 suggestion = "Consider releasing this Floating IP if it is unused."
                 severity = "low"
+            elif res_type == 'volume':
+                if res['status'] == 'unattached':
+                    description = f"Block Storage Volume '{name}' ({res['server_type']}) is unattached to any server."
+                    suggestion = "Consider deleting this volume to save costs."
+                    severity = "medium"
+                else:
+                    continue
+            elif res_type == 'primary_ip':
+                description = f"Primary IP '{name}' ({res['ip']}) is unassigned."
+                suggestion = "Consider releasing this Primary IP to save costs."
+                severity = "low"
+            elif res_type == 'object_storage':
+                if res.get('disk', 0.0) == 0.0:
+                    description = f"Object Storage bucket '{name}' is empty."
+                    suggestion = "Consider deleting this bucket if it is no longer needed."
+                    severity = "low"
+                else:
+                    continue
+            else:
+                continue
                 
             recommendations.append({
                 "type": "stale_resource",
@@ -201,7 +226,13 @@ def generate_recommendations(all_resources, matched_ips, mapping_by_domain):
                 "project": res['project'],
                 "cost_impact": cost,
                 "description": description,
-                "suggestion": suggestion
+                "suggestion": suggestion,
+                "price_base": res.get("price_base"),
+                "price_backups": res.get("price_backups"),
+                "price_primary_ip": res.get("price_primary_ip"),
+                "price_excess": res.get("price_excess"),
+                "volume_size_gb": res.get("volume_size_gb"),
+                "volume_price_per_gb": res.get("volume_price_per_gb")
             })
             total_potential_savings += cost
             
@@ -555,30 +586,56 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
             
             # Precise instance pricing lookup
             st_name = server['server_type']['name']
-            loc_name = server.get('datacenter', {}).get('location', {}).get('name', 'N/A')
-            dc_name = server.get('datacenter', {}).get('name', 'N/A')
+            loc_name = server.get('location', {}).get('name') or server.get('datacenter', {}).get('location', {}).get('name') or 'N/A'
+            dc_name = server.get('datacenter', {}).get('name') or 'N/A'
             
-            price = 0.0
+            # Base price
+            base_price = 0.0
+            
+            # 1. Try to fetch from server's own server_type prices (most specific, captures legacy/grandfathered prices)
             server_type_prices = server.get('server_type', {}).get('prices', [])
             for p in server_type_prices:
                 if p.get('location') == loc_name:
                     try:
-                        price = float(p.get('price_monthly', {}).get('net', 0.0))
+                        base_price = float(p.get('price_monthly', {}).get('net', 0.0))
                         break
                     except (ValueError, TypeError, KeyError):
                         pass
             
-            # Fallback to dynamic pricing maps or static catalog
-            if price == 0.0:
+            # 2. Try to fetch from dynamic unified pricing maps
+            if base_price == 0.0:
                 if pricing_maps and st_name in pricing_maps.get('server', {}):
                     prices_by_loc = pricing_maps['server'][st_name]
                     if loc_name in prices_by_loc:
-                        price = prices_by_loc[loc_name]
+                        base_price = prices_by_loc[loc_name]
                     elif prices_by_loc:
-                        price = next(iter(prices_by_loc.values()))
+                        base_price = next(iter(prices_by_loc.values()))
+            
+            # 3. Static fallback
+            if base_price == 0.0:
+                base_price = PRICING.get(st_name, 0.0)
                 
-                if price == 0.0:
-                    price = PRICING.get(st_name, 0.0)
+            # Surcharges:
+            # 1. Backups (typically 20%)
+            backups_price = 0.0
+            backups_enabled = server.get('backup_window') is not None
+            if backups_enabled:
+                surcharge_pct = pricing_maps.get('backup_percentage', 20.0) if pricing_maps else 20.0
+                backups_price = base_price * (surcharge_pct / 100.0)
+                
+            # 2. Primary Public IPv4 Address
+            primary_ip_price = 0.0
+            has_ipv4 = server.get('public_net', {}).get('ipv4', {}).get('id') is not None
+            if has_ipv4:
+                primary_ip_price = 0.50  # fallback
+                if pricing_maps and 'ipv4' in pricing_maps.get('primary_ip', {}):
+                    pip_by_loc = pricing_maps['primary_ip']['ipv4']
+                    if loc_name in pip_by_loc:
+                        primary_ip_price = pip_by_loc[loc_name]
+                    elif pip_by_loc:
+                        primary_ip_price = next(iter(pip_by_loc.values()))
+            
+            price = base_price + backups_price + primary_ip_price
 
             cores = server.get('server_type', {}).get('cores', 0)
             memory = server.get('server_type', {}).get('memory', 0.0)
@@ -597,6 +654,9 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                 'server_type': st_name,
                 'labels': labels_str,
                 'price_monthly': price,
+                'price_base': base_price,
+                'price_backups': backups_price,
+                'price_primary_ip': primary_ip_price,
                 'traffic_mb': 50,
                 # Enriched fields
                 'cores': cores,
@@ -632,6 +692,8 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
             loc_name = lb.get('location', {}).get('name', 'N/A')
             
             price = 0.0
+            
+            # 1. Try to fetch from load balancer's own type prices (most specific, captures legacy/grandfathered prices)
             lb_type_prices = lb.get('load_balancer_type', {}).get('prices', [])
             for p in lb_type_prices:
                 if p.get('location') == loc_name:
@@ -640,8 +702,8 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                         break
                     except (ValueError, TypeError, KeyError):
                         pass
-
-            # Fallback to dynamic pricing maps or static catalog
+            
+            # 2. Try to fetch from dynamic unified pricing maps
             if price == 0.0:
                 if pricing_maps and lb_type in pricing_maps.get('load_balancer', {}):
                     prices_by_loc = pricing_maps['load_balancer'][lb_type]
@@ -649,9 +711,10 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                         price = prices_by_loc[loc_name]
                     elif prices_by_loc:
                         price = next(iter(prices_by_loc.values()))
-                        
-                if price == 0.0:
-                    price = PRICING.get(lb_type, 0.0)
+            
+            # 3. Static fallback
+            if price == 0.0:
+                price = PRICING.get(lb_type, 0.0)
 
             services_count = len(lb.get('services', []))
             targets_count = len(lb.get('targets', []))
@@ -697,9 +760,21 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
 
             # Dynamic price
             if fip_type == 'ipv4':
-                price = PRICING.get('floating_ip_ipv4', 3.00)
+                price = 3.00
+                if pricing_maps and 'ipv4' in pricing_maps.get('floating_ip', {}):
+                    fip_by_loc = pricing_maps['floating_ip']['ipv4']
+                    if loc_name in fip_by_loc:
+                        price = fip_by_loc[loc_name]
+                    elif fip_by_loc:
+                        price = next(iter(fip_by_loc.values()))
             else:
-                price = PRICING.get('floating_ip_ipv6', 1.00)
+                price = 1.00
+                if pricing_maps and 'ipv6' in pricing_maps.get('floating_ip', {}):
+                    fip_by_loc = pricing_maps['floating_ip']['ipv6']
+                    if loc_name in fip_by_loc:
+                        price = fip_by_loc[loc_name]
+                    elif fip_by_loc:
+                        price = next(iter(fip_by_loc.values()))
 
             all_resources.append({
                 'resource_type': 'floating_ip',
@@ -717,6 +792,127 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                 'fip_type': fip_type,
                 'assigned_server': assigned_server_name
             })
+
+        # 4. Process Volumes
+        volume_per_gb_price = pricing_maps.get('volume_per_gb', 0.0572) if pricing_maps else 0.0572
+        for vol in project_res.get('volumes', []):
+            size_gb = vol.get('size', 0)
+            price = size_gb * volume_per_gb_price
+            
+            loc_name = vol.get('location', {}).get('name', 'N/A')
+            created = vol.get('created')
+            
+            assigned_server_id = vol.get('server')
+            assigned_server_name = server_id_to_name.get(assigned_server_id) if assigned_server_id else None
+            
+            sanitized_labels_dict = {}
+            for k, v in vol.get("labels", {}).items():
+                k_lower = k.lower()
+                if any(sec in k_lower for sec in ['secret', 'token', 'password', 'key', 'auth', 'pass']):
+                    v = '********'
+                sanitized_labels_dict[k] = v
+            labels_str = ",".join([f"{k}={v}" for k, v in sanitized_labels_dict.items()])
+            
+            all_resources.append({
+                'resource_type': 'volume',
+                'project': project_name,
+                'server_name': vol.get('name') or f"Volume {vol.get('id')}",
+                'ip': f"vol-{vol.get('id')}",
+                'status': 'attached' if assigned_server_id else 'unattached',
+                'created': created,
+                'server_type': f"{size_gb} GB Block Storage",
+                'labels': labels_str,
+                'price_monthly': price,
+                'traffic_mb': 0,
+                # Enriched fields
+                'location': loc_name,
+                'disk': size_gb,
+                'assigned_server': assigned_server_name
+            })
+
+        # 5. Process Primary IPs (unassigned)
+        for pip in project_res.get('primary_ips', []):
+            assigned_res_id = pip.get('assignee_id')
+            if assigned_res_id is not None:
+                continue
+                
+            ip = pip.get('ip')
+            created = pip.get('created')
+            pip_type = pip.get('type', 'ipv4')
+            loc_name = pip.get('datacenter', {}).get('location', {}).get('name', 'N/A')
+            
+            price = 0.50 if pip_type == 'ipv4' else 0.0
+            if pricing_maps and pip_type in pricing_maps.get('primary_ip', {}):
+                pip_by_loc = pricing_maps['primary_ip'][pip_type]
+                if loc_name in pip_by_loc:
+                    price = pip_by_loc[loc_name]
+                elif pip_by_loc:
+                    price = next(iter(pip_by_loc.values()))
+                    
+            sanitized_labels_dict = {}
+            for k, v in pip.get("labels", {}).items():
+                k_lower = k.lower()
+                if any(sec in k_lower for sec in ['secret', 'token', 'password', 'key', 'auth', 'pass']):
+                    v = '********'
+                sanitized_labels_dict[k] = v
+            labels_str = ",".join([f"{k}={v}" for k, v in sanitized_labels_dict.items()])
+            
+            all_resources.append({
+                'resource_type': 'primary_ip',
+                'project': project_name,
+                'server_name': pip.get('name') or f"Primary IP {ip}",
+                'ip': ip,
+                'status': 'unassigned',
+                'created': created,
+                'server_type': pip_type,
+                'labels': labels_str,
+                'price_monthly': price,
+                'traffic_mb': 0,
+                # Enriched fields
+                'location': loc_name,
+                'fip_type': pip_type,
+                'assigned_server': None
+            })
+
+    # 6. Process Object Storage (S3) buckets
+    s3_access_key = os.getenv('HETZNER_OBJECT_STORAGE_ACCESS_KEY')
+    s3_secret_key = os.getenv('HETZNER_OBJECT_STORAGE_SECRET_KEY')
+    if s3_access_key and s3_secret_key:
+        print("Fetching Hetzner Object Storage buckets...")
+        try:
+            buckets = fetch_hetzner_object_storage(s3_access_key, s3_secret_key)
+            if buckets:
+                total_size_gb = sum(b['size_bytes'] for b in buckets) / (1024**3)
+                excess_gb = max(0.0, total_size_gb - 1000.0)
+                excess_cost = excess_gb * 0.00585
+                
+                for idx, b in enumerate(buckets):
+                    size_gb = b['size_bytes'] / (1024**3)
+                    base_cost = 6.49 if idx == 0 else 0.0
+                    bucket_share_pct = (size_gb / total_size_gb) if total_size_gb > 0 else 0.0
+                    bucket_excess_cost = excess_cost * bucket_share_pct
+                    bucket_price = base_cost + bucket_excess_cost
+                    
+                    all_resources.append({
+                        'resource_type': 'object_storage',
+                        'project': 'Object Storage',
+                        'server_name': b['name'],
+                        'ip': f"s3-{b['name']}",
+                        'status': 'active',
+                        'created': b['created'],
+                        'server_type': f"S3 Bucket ({b['object_count']} objs)",
+                        'labels': f"region={b['location']}",
+                        'price_monthly': bucket_price,
+                        'traffic_mb': 0,
+                        # Enriched fields
+                        'location': b['location'],
+                        'disk': round(size_gb, 2),
+                        'cores': 0,
+                        'memory': 0
+                    })
+                print(f"Successfully processed {len(buckets)} Object Storage buckets.")
+        except Exception as e:
+            print(f"Warning: Failed to process Object Storage buckets: {e}")
 
     ip_to_server = {res['ip']: res for res in all_resources}
     
@@ -874,6 +1070,10 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
     unmapped_servers = []
     for ip, resource in ip_to_server.items():
         if ip not in matched_server_ips:
+            if resource['resource_type'] == 'volume' and resource['status'] != 'unattached':
+                continue
+            if resource['resource_type'] == 'object_storage':
+                continue
             unmapped_servers.append(resource)
 
     # 2. Historical comparison diff engine

@@ -3,3 +3,4 @@ pdfkit>=1.0.0
 prometheus_client>=0.16.0
 python-dotenv>=1.0.0
 python-whois>=0.8.0
+boto3>=1.26.0
