@@ -766,28 +766,29 @@ def save_reports(html_dashboard, html_print, timestamp, mapping_by_domain, uniqu
         except Exception as e:
             print(f"Failed to prune old backend snapshot {file_to_remove}: {e}")
 
-    # Prune old historical snapshots in frontend/public/snapshots/
-    react_snapshot_files = glob.glob(os.path.join(react_snapshots_dir, 'snapshot_*.json'))
-    react_snapshot_files.sort()
-    while len(react_snapshot_files) > max_snapshots:
-        file_to_remove = react_snapshot_files.pop(0)
-        try:
-            os.remove(file_to_remove)
-            print(f"Pruned old React snapshot: {file_to_remove}")
-        except Exception as e:
-            print(f"Failed to prune old React snapshot {file_to_remove}: {e}")
+    # Synchronize all backend snapshots to public and dist folders to ensure they are available for frontend fetch
+    import shutil
+    
+    # 1. Sync to public folder
+    try:
+        shutil.rmtree(react_snapshots_dir, ignore_errors=True)
+        os.makedirs(react_snapshots_dir, exist_ok=True)
+        for f in glob.glob(os.path.join(snapshots_dir, 'snapshot_*.json')):
+            shutil.copy2(f, react_snapshots_dir)
+        print("Synchronized all backend snapshots to React public folder.")
+    except Exception as e:
+        print(f"Failed to synchronize snapshots to public folder: {e}")
 
-    # Prune old historical snapshots in frontend/dist/snapshots/
-    if os.path.exists(prod_snapshots_dir):
-        prod_snapshot_files = glob.glob(os.path.join(prod_snapshots_dir, 'snapshot_*.json'))
-        prod_snapshot_files.sort()
-        while len(prod_snapshot_files) > max_snapshots:
-            file_to_remove = prod_snapshot_files.pop(0)
-            try:
-                os.remove(file_to_remove)
-                print(f"Pruned old production build snapshot: {file_to_remove}")
-            except Exception as e:
-                print(f"Failed to prune old production build snapshot {file_to_remove}: {e}")
+    # 2. Sync to dist folder if it exists
+    if os.path.exists(os.path.join('frontend', 'dist')):
+        try:
+            shutil.rmtree(prod_snapshots_dir, ignore_errors=True)
+            os.makedirs(prod_snapshots_dir, exist_ok=True)
+            for f in glob.glob(os.path.join(snapshots_dir, 'snapshot_*.json')):
+                shutil.copy2(f, prod_snapshots_dir)
+            print("Synchronized all backend snapshots to production dist folder.")
+        except Exception as e:
+            print(f"Failed to synchronize snapshots to dist folder: {e}")
 
     # Build history trends from remaining snapshots
     history_trends = []

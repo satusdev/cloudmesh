@@ -105,6 +105,8 @@ ssh "${TARGET_USER}@${TARGET_IP}" bash -c "
   if [ ! -f '.env' ]; then
       cp .env.example .env
       echo '⚠️ Created default .env file. Please configure the environment tokens.'
+  else
+      echo '🛡️ Existing .env file found. Retaining server configuration.'
   fi
   
   echo '📁 Creating output directories...'
@@ -113,6 +115,9 @@ ssh "${TARGET_USER}@${TARGET_IP}" bash -c "
   
   echo '🚀 Starting Docker services...'
   docker compose up -d
+  
+  echo '🧹 Pruning old images and orphaned resources to clean up space...'
+  docker system prune -af || true
   
   echo '🔍 Running audit script...'
   ./venv/bin/python script.py

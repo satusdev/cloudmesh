@@ -55,6 +55,9 @@ echo "🚀 Restarting Docker containers..."
 docker compose down --remove-orphans || true
 docker compose up -d
 
+echo "🧹 Pruning unused Docker images and orphaned resources..."
+docker system prune -af || true
+
 # Step 5: Run initial audit script
 echo "🔍 Running initial audit..."
 ./venv/bin/python script.py
