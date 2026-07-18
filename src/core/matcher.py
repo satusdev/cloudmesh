@@ -17,6 +17,13 @@ from src.api.hetzner import (
 # WHOIS cache persistent path
 CACHE_PATH = os.path.join('reports', 'whois_cache.json')
 
+# How long (in seconds) a valid WHOIS result is considered fresh before re-fetching.
+# 7 days — short enough to pick up domain renewals, long enough to avoid hammering WHOIS.
+WHOIS_CACHE_TTL = 7 * 24 * 3600  # 604800 seconds
+
+# Error entries are retried after 24 hours.
+WHOIS_ERROR_TTL = 86400  # 1 day
+
 def load_whois_cache():
     if os.path.exists(CACHE_PATH):
         try:
@@ -46,16 +53,33 @@ def tcp_health_check(ip, port=80, timeout=2):
         return 0  # Failure
 
 def get_domain_expiry(domain):
+    now = time.time()
+
     if domain in whois_cache:
         val = whois_cache[domain]
-        if isinstance(val, dict) and val.get("status") == "error":
-            ts = val.get("timestamp", 0)
-            if time.time() - ts < 86400:
-                return "Error / N/A"
-            # Expired error entry, delete to allow retry
+
+        if isinstance(val, dict):
+            if val.get("status") == "error":
+                # Re-try error entries after WHOIS_ERROR_TTL (24h)
+                if now - val.get("timestamp", 0) < WHOIS_ERROR_TTL:
+                    return "Error / N/A"
+                # Stale error — fall through to re-fetch
+                del whois_cache[domain]
+            elif val.get("status") == "ok":
+                # New-format valid entry — check TTL
+                if now - val.get("cached_at", 0) < WHOIS_CACHE_TTL:
+                    return val["expiry"]
+                # TTL expired — fall through to re-fetch
+                print(f"WHOIS cache TTL expired for {domain}, re-fetching...")
+                del whois_cache[domain]
+            # Unknown dict shape — discard and re-fetch
+            elif domain in whois_cache:
+                del whois_cache[domain]
+        elif isinstance(val, str):
+            # Legacy bare-string format (no TTL info) — treat as stale and re-fetch
+            # so any renewed domain picks up the correct date on the next run.
+            print(f"WHOIS cache entry for {domain} is in legacy format, re-fetching to verify...")
             del whois_cache[domain]
-        else:
-            return val
 
     try:
         w = whois.whois(domain)
@@ -78,7 +102,12 @@ def get_domain_expiry(domain):
         else:
             expiry_str = "N/A"
 
-        whois_cache[domain] = expiry_str
+        # Store with timestamp so TTL can be enforced on future runs
+        whois_cache[domain] = {
+            "status": "ok",
+            "expiry": expiry_str,
+            "cached_at": now
+        }
         time.sleep(1.2)  # Rate limiting to avoid WHOIS bans
         return expiry_str
 
@@ -86,7 +115,7 @@ def get_domain_expiry(domain):
         print(f"WHOIS error for {domain}: {e}")
         whois_cache[domain] = {
             "status": "error",
-            "timestamp": time.time(),
+            "timestamp": now,
             "reason": str(e)
         }
         return "Error / N/A"
