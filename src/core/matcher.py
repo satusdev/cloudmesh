@@ -11,7 +11,9 @@ from src.api.hetzner import (
     parallel_fetch_hetzner_resources, 
     PRICING, 
     fetch_dynamic_pricing, 
-    fetch_hetzner_object_storage
+    fetch_hetzner_object_storage,
+    fetch_hetzner_robot_servers,
+    fetch_hetzner_robot_firewall
 )
 
 # WHOIS cache persistent path
@@ -298,6 +300,9 @@ def generate_security_alerts(all_resources, port_audit_results, mapping_by_domai
             # A. No Firewalls Check
             firewalls = res.get('firewalls', [])
             if not firewalls:
+                is_dedicated = res.get('is_dedicated', False)
+                console_name = "Hetzner Robot Console" if is_dedicated else "Hetzner Cloud Console"
+                server_type_desc = "Dedicated Server" if is_dedicated else "Virtual Server"
                 security_alerts.append({
                     "id": f"sec_no_firewall_{name}_{project}",
                     "type": "no_firewall",
@@ -306,8 +311,8 @@ def generate_security_alerts(all_resources, port_audit_results, mapping_by_domai
                     "resource_type": "server",
                     "ip": ip,
                     "project": project,
-                    "description": f"Virtual Server '{name}' has no firewalls assigned. It is directly exposed to public traffic.",
-                    "suggestion": "Create a Firewall in Hetzner Cloud Console and apply it to this server to restrict incoming traffic."
+                    "description": f"{server_type_desc} '{name}' has no firewalls assigned. It is directly exposed to public traffic.",
+                    "suggestion": f"Create a Firewall in {console_name} and apply it to this server to restrict incoming traffic."
                 })
             
             # B. EOL OS Check
@@ -697,7 +702,7 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                 'protection_delete': protection_delete,
                 'locked': locked,
                 # Security checks fields
-                'firewalls': server.get('firewalls', []),
+                'firewalls': server.get('public_net', {}).get('firewalls', []),
                 'ssh_keys': server.get('ssh_keys', []),
                 'backup_window': server.get('backup_window')
             })
@@ -942,6 +947,76 @@ def process_servers_and_domains(cloudflare_token, hetzner_projects, metrics):
                 print(f"Successfully processed {len(buckets)} Object Storage buckets.")
         except Exception as e:
             print(f"Warning: Failed to process Object Storage buckets: {e}")
+
+    # 7. Process Hetzner Robot (Dedicated) Servers
+    robot_user = os.getenv('HETZNER_ROBOT_USER')
+    robot_password = os.getenv('HETZNER_ROBOT_PASSWORD')
+    if robot_user and robot_password:
+        print("Fetching Hetzner Robot Dedicated Servers...")
+        try:
+            robot_servers = fetch_hetzner_robot_servers(robot_user, robot_password)
+            if robot_servers:
+                def fetch_firewall_status(item):
+                    server_data = item.get('server', {})
+                    ip = server_data.get('server_ip')
+                    if not ip:
+                        return None
+                    fw_info = fetch_hetzner_robot_firewall(robot_user, robot_password, ip)
+                    is_active = False
+                    if fw_info and isinstance(fw_info, dict):
+                        is_active = fw_info.get('firewall', {}).get('status') == 'active'
+                    return ip, is_active
+
+                fw_map = {}
+                with ThreadPoolExecutor(max_workers=min(10, len(robot_servers))) as executor:
+                    fw_results = list(executor.map(fetch_firewall_status, robot_servers))
+                    for res_item in fw_results:
+                        if res_item:
+                            fw_map[res_item[0]] = res_item[1]
+
+                for item in robot_servers:
+                    server_data = item.get('server', {})
+                    ip = server_data.get('server_ip')
+                    if not ip:
+                        continue
+                    
+                    name = server_data.get('server_name') or f"Dedicated Server {server_data.get('server_number')}"
+                    product = server_data.get('product', 'Dedicated')
+                    dc = server_data.get('dc', 'N/A')
+                    status = server_data.get('status', 'ready')
+                    
+                    is_fw_active = fw_map.get(ip, False)
+                    firewalls = [{'id': 'robot-firewall', 'status': 'applied'}] if is_fw_active else []
+                    
+                    all_resources.append({
+                        'resource_type': 'server',
+                        'project': 'Dedicated Servers',
+                        'server_name': name,
+                        'ip': ip,
+                        'status': status,
+                        'created': None,
+                        'server_type': product,
+                        'labels': f"dc={dc},server_number={server_data.get('server_number')}",
+                        'price_monthly': 0.0,
+                        'traffic_mb': 0,
+                        # Enriched fields
+                        'cores': 0,
+                        'memory': 0,
+                        'disk': 0,
+                        'location': dc.split('-')[0] if '-' in dc else dc,
+                        'datacenter': dc,
+                        'image': 'N/A',
+                        'protection_delete': False,
+                        'locked': False,
+                        # Security checks fields
+                        'firewalls': firewalls,
+                        'ssh_keys': [],
+                        'backup_window': None,
+                        'is_dedicated': True
+                    })
+                print(f"Successfully processed {len(robot_servers)} Hetzner Robot dedicated servers.")
+        except Exception as e:
+            print(f"Warning: Failed to process Hetzner Robot dedicated servers: {e}")
 
     ip_to_server = {res['ip']: res for res in all_resources}
     

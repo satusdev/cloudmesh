@@ -202,3 +202,29 @@ def fetch_hetzner_object_storage(access_key, secret_key):
             print(f"Warning: Failed to calculate size for bucket {bucket['name']}: {e}")
             
     return buckets
+
+def fetch_hetzner_robot_servers(user, password):
+    url = "https://robot-ws.your-server.de/server"
+    try:
+        response = requests.get(url, auth=(user, password), timeout=10)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Warning: Hetzner Robot API returned status code {response.status_code}")
+            return []
+    except Exception as e:
+        print(f"Warning: Failed to fetch Hetzner Robot servers: {e}")
+        return []
+
+def fetch_hetzner_robot_firewall(user, password, server_ip_or_number):
+    url = f"https://robot-ws.your-server.de/firewall/{server_ip_or_number}"
+    try:
+        response = requests.get(url, auth=(user, password), timeout=10)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+    except Exception as e:
+        print(f"Warning: Failed to fetch Hetzner Robot firewall for {server_ip_or_number}: {e}")
+        return None
+

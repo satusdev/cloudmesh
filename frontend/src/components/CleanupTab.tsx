@@ -5,7 +5,9 @@ import {
   Copy, 
   ExternalLink,
   Info,
-  Check
+  Check,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import type { CleanupFlag, AuditData } from '../types';
 
@@ -20,6 +22,8 @@ export function CleanupTab({ cleanupFlags, data }: CleanupTabProps) {
   const [severityFilter, setSeverityFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [selectedProject, setSelectedProject] = useState('All');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -59,6 +63,14 @@ export function CleanupTab({ cleanupFlags, data }: CleanupTabProps) {
       return matchesSearch && matchesType && matchesSeverity && matchesProject;
     });
   }, [cleanupFlags, searchTerm, typeFilter, severityFilter, selectedProject, data?.servers]);
+
+  const totalPages = Math.ceil(filteredFlags.length / itemsPerPage);
+  const activePage = Math.min(Math.max(1, currentPage), totalPages || 1);
+
+  const paginatedFlags = useMemo(() => {
+    const start = (activePage - 1) * itemsPerPage;
+    return filteredFlags.slice(start, start + itemsPerPage);
+  }, [filteredFlags, activePage, itemsPerPage]);
 
   const stats = useMemo(() => {
     const total = filteredFlags.length;
@@ -155,7 +167,10 @@ export function CleanupTab({ cleanupFlags, data }: CleanupTabProps) {
               type="text"
               placeholder="Search by domain, record or IP..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl py-3 pl-11 pr-4 text-sm font-semibold focus:outline-none focus:border-indigo-500 transition duration-200"
             />
           </div>
@@ -164,7 +179,10 @@ export function CleanupTab({ cleanupFlags, data }: CleanupTabProps) {
             {/* Filter by project */}
             <select
               value={selectedProject}
-              onChange={(e) => setSelectedProject(e.target.value)}
+              onChange={(e) => {
+                setSelectedProject(e.target.value);
+                setCurrentPage(1);
+              }}
               className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs font-bold focus:outline-none focus:border-indigo-500 transition duration-200 cursor-pointer"
             >
               {projectsList.map(p => (
@@ -175,7 +193,10 @@ export function CleanupTab({ cleanupFlags, data }: CleanupTabProps) {
             {/* Filter by flag type */}
             <select
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
+              onChange={(e) => {
+                setTypeFilter(e.target.value as any);
+                setCurrentPage(1);
+              }}
               className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs font-bold focus:outline-none focus:border-indigo-500 transition duration-200 cursor-pointer"
             >
               <option value="all">All Issue Types</option>
@@ -188,7 +209,10 @@ export function CleanupTab({ cleanupFlags, data }: CleanupTabProps) {
             {/* Filter by severity */}
             <select
               value={severityFilter}
-              onChange={(e) => setSeverityFilter(e.target.value as any)}
+              onChange={(e) => {
+                setSeverityFilter(e.target.value as any);
+                setCurrentPage(1);
+              }}
               className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs font-bold focus:outline-none focus:border-indigo-500 transition duration-200 cursor-pointer"
             >
               <option value="all">All Severities</option>
@@ -202,8 +226,9 @@ export function CleanupTab({ cleanupFlags, data }: CleanupTabProps) {
 
       {/* Main flags list */}
       {filteredFlags.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4">
-          {filteredFlags.map((flag) => {
+        <>
+          <div className="grid grid-cols-1 gap-4">
+          {paginatedFlags.map((flag) => {
             const severityStyle = getSeverityStyles(flag.severity);
             const hostname = flag.subdomain === '@' ? flag.domain : `${flag.subdomain}.${flag.domain}`;
             const proj = getFlagProject(flag);
@@ -274,6 +299,65 @@ export function CleanupTab({ cleanupFlags, data }: CleanupTabProps) {
             );
           })}
         </div>
+        {totalPages > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm mt-6">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Showing <span className="font-extrabold text-slate-800 dark:text-slate-200">{((activePage - 1) * itemsPerPage) + 1}</span> to{' '}
+              <span className="font-extrabold text-slate-800 dark:text-slate-200">
+                {Math.min(activePage * itemsPerPage, filteredFlags.length)}
+              </span>{' '}
+              of <span className="font-extrabold text-slate-800 dark:text-slate-200">{filteredFlags.length}</span> issues
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={activePage === 1}
+                className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-950 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-800 rounded-xl transition cursor-pointer text-slate-700 dark:text-slate-300"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              
+              {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => {
+                const isNearCurrent = Math.abs(pageNum - activePage) <= 1;
+                const isEdge = pageNum === 1 || pageNum === totalPages;
+                
+                if (totalPages > 7 && !isNearCurrent && !isEdge) {
+                  if (pageNum === 2 && activePage > 3) {
+                    return <span key="ellipsis-left" className="px-2 text-slate-400 font-bold">...</span>;
+                  }
+                  if (pageNum === totalPages - 1 && activePage < totalPages - 2) {
+                    return <span key="ellipsis-right" className="px-2 text-slate-400 font-bold">...</span>;
+                  }
+                  return null;
+                }
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                      activePage === pageNum
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={activePage === totalPages}
+                className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-950 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-800 rounded-xl transition cursor-pointer text-slate-700 dark:text-slate-300"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+        </>
       ) : (
         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-3xl p-10 flex flex-col items-center text-center space-y-3">
           <div className="bg-emerald-500/20 p-4 rounded-full text-emerald-500">
